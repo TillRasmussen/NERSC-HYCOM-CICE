@@ -24,11 +24,11 @@ module mod_NERSCnml
     !default values
     write_arche     = .false.
     ! read namelist
-    open (funi, file='hycom_opt', status='old',iostat=nml_err)
+    open (funi, file='hycom.nml', status='old',iostat=nml_err)
     if (nml_err .ne. 0) then
       if  (mnproc.eq.1) then
         write (lp,'(a)') &
-          'NERSC HYCOM ERROR: WARNING: hycom_nml namelist not read from file: hycom_opt'
+          'NERSC HYCOM ERROR: WARNING: hycom_nml namelist not read from file: hycom.nml'
         call flush(lp)
       endif
     endif
@@ -46,7 +46,7 @@ module mod_NERSCnml
     end do
     close(funi)
     if (mnproc.eq.1) then
-      write (lp,*)'NERSC HYCOM: Reading hycom_nml from: hycom_opt'
+      write (lp,*)'NERSC HYCOM: Reading hycom_nml from: hycom.nml'
       write (lp,*)'NERSC HYCOM: Write arche    = ',write_arche
     endif !1st tile
     call xcsync(flush_lp)
