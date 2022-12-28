@@ -252,7 +252,9 @@
               thstar(i,j,k1,2)=th3d(i,j,k1,1)+kappaf(temp(i,j,k1,1), &
                                                      saln(i,j,k1,1), &
                                               thbase+th3d(i,j,k1,1), &
-
+#if defined(KAPPAF_CENTERED)
+                                       0.5*(p(i,j,k1+1)+p(i,j,k1)), &
+#else
                                                         p(i,j,k1), &
 #endif
                                                      kapi(i,j))
