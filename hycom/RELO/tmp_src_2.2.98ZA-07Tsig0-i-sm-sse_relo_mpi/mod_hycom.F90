@@ -12,7 +12,9 @@
 #define SEA_V iv(i,j).ne.0
 #endif
       module mod_hycom
-#if defined(USE_ESMF4)
+#if defined(NERSC_USE_ESMF)
+      use ESMF
+#elif defined(USE_ESMF4)
       use ESMF_Mod       ! ESMF  Framework
 #endif
       use mod_xc         ! HYCOM communication interface
@@ -47,7 +49,7 @@
 !
       implicit none
 !
-#if defined(USE_ESMF4)
+#if defined(USE_ESMF4) || defined(NERSC_USE_ESMF)
       public HYCOM_SetServices
 #else
       public HYCOM_Init, HYCOM_Run, HYCOM_Final
@@ -109,7 +111,7 @@
 #endif
       logical, save, public  :: end_of_run_cpl !set in HYCOM_Run for coupling
 
-#if defined(USE_ESMF4)
+#if defined(USE_ESMF4) || defined(NERSC_USE_ESMF)
 !
 ! --- Data types for Import/Export array pointers
       type ArrayPtrReal2D
@@ -186,30 +188,58 @@
 
       contains
 
-#if defined(USE_ESMF4)
+#if defined(USE_ESMF4) || defined(NERSC_USE_ESMF)
       subroutine HYCOM_SetServices(gridComp, rc)
 !
       type(ESMF_GridComp)  :: gridComp
       integer, intent(out) :: rc
 !
+#if defined(NERSC_USE_ESMF)
       call ESMF_GridCompSetEntryPoint( &
-           gridComp, &
-           ESMF_SETINIT, &
-           HYCOM_Init, &
-           ESMF_SINGLEPHASE, &
+           gridComp,                   &
+           ESMF_METHOD_INITIALIZE,     &
+           HYCOM_Init,                 &
+           phase=1,                    &
+           rc=rc)
+! HYCOM_Init2 is used for choosing freezing point 
+      call ESMF_GridCompSetEntryPoint( &
+           gridComp,                   &
+           ESMF_METHOD_INITIALIZE,     &
+           HYCOM_Init_2,               &
+           phase=2,                    &
            rc=rc)
       call ESMF_GridCompSetEntryPoint( &
-           gridComp, &
-           ESMF_SETRUN, &
-           HYCOM_Run, &
-           ESMF_SINGLEPHASE, &
+           gridComp,                   &
+           ESMF_METHOD_RUN,            &
+           HYCOM_Run,                  &
+           phase=1,                    &
            rc=rc)
       call ESMF_GridCompSetEntryPoint( &
-           gridComp, &
-           ESMF_SETFINAL, &
-           HYCOM_Final, &
-           ESMF_SINGLEPHASE, &
+           gridComp,                   &       
+           ESMF_METHOD_FINALIZE,       &
+           HYCOM_Final,                &
+           phase=1,                    &
+           rc=rc)   
+#else 
+      call ESMF_GridCompSetEntryPoint( &
+           gridComp,                   &
+           ESMF_SETINIT,               &
+           HYCOM_Init,                 &
+           ESMF_SINGLEPHASE,           &
+           rc=rc)                  
+      call ESMF_GridCompSetEntryPoint( &
+           gridComp,                   &
+           ESMF_SETRUN,                &
+           HYCOM_Run,                  &
+           ESMF_SINGLEPHASE,           &
            rc=rc)
+      call ESMF_GridCompSetEntryPoint( &
+           gridComp,                   &
+           ESMF_SETFINAL,              &
+           HYCOM_Final,                &
+           ESMF_SINGLEPHASE,           &
+           rc=rc)
+#endif
 !
       end subroutine HYCOM_SetServices
 
@@ -238,8 +268,13 @@
       character(ESMF_MAXSTR)     :: msg, gridName
 !
 ! --- Report
-      call ESMF_LogWrite("HYCOM Setup routine called", &
+#if (NERSC_USE_ESMF)
+      call ESMF_LogWrite("HYCOM Setup_ESMF routine called", &
+           ESMF_LOGMSG_INFO, rc=rc)
+#else
+      call ESMF_LogWrite("HYCOM Setup_ESMF routine called", &
            ESMF_LOG_INFO, rc=rc)
+#endif
       call ESMF_LogFlush(rc=rc)
 !
 !  Attributes for import fields, identical to CICE export fields
@@ -352,7 +387,8 @@
       expFieldLongName( 7) = "Ocean Mixed Layer Thickness"
       expFieldStdName(  7) = "ocean_mixed_layer_thickness"
       expFieldUnits(    7) = "m"
-!KAL - new. Exported from hycom -> cice
+#if defined(NERSC_USE_ESMF)
+! read atm for both HYCOM and CICE in HYCOM
       expFieldName(     8) = "tair"
       expFieldLongName( 8) = ""
       expFieldStdName(  8) = ""
@@ -417,24 +453,34 @@
       expFieldLongName(23) = "Snowfall Rate"
       expFieldStdName( 23) = ""
       expFieldUnits(   23) = "kg m**-2 s*-1"
-!KAL  TODO: Export longw7ve, shortwave, rainfall rate, snow rate,
-!KAL  TODO: air density, specific humidity
-!KAL - new
+#endif
 !
 !  Create a DE layout to match HYCOM layout
       deLayout = ESMF_DELayoutCreate(vm, rc=rc)
-      if (ESMF_LogMsgFoundError(rc, &
+#if defined(NERSC_USE_ESMF)
+      if (ESMF_LogFoundError(rc,                                  &
+         msg="Setup_ESMF: DELayoutCreate failed", rcToReturn=rc2) &
+      call ESMF_Finalize(rc=rc)
+#else
+      if (ESMF_LogMsgFoundError(rc,                            &
          "Setup_ESMF: DELayoutCreate failed", rcToReturn=rc2)) &
-         call ESMF_Finalize(rc=rc)
+      call ESMF_Finalize(rc=rc)
+#endif
 !
 !  Create array specifications
       call ESMF_ArraySpecSet(arraySpec2Dr, &
            rank=2, &
            typekind=ESMF_TYPEKIND_R4, &
            rc=rc)
-      if (ESMF_LogMsgFoundError(rc, &
+#if defined(NERSC_USE_ESMF)
+      if (ESMF_LogFoundError(rc,                                 &
+         msg="Setup_ESMF: ArraySpecSet failed", rcToReturn=rc2)) &
+      call ESMF_Finalize(rc=rc)
+#else
+      if (ESMF_LogMsgFoundError(rc,                          &
          "Setup_ESMF: ArraySpecSet failed", rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
+#endif
 !
 !  Create an ESMF grid that matches the HYCOM 2D grid
       dimNames(1)="longitude";    dimNames(2)="latitude";
@@ -457,9 +503,15 @@
                                  deBlockList=deBlockList(:,:,1:ijpr), &
                                           rc=rc)
 #endif
-      if (ESMF_LogMsgFoundError(rc, &
+#if defined(NERSC_USE_ESMF)
+      if (ESMF_LogFoundError(rc,                                 &
+         msg="Setup_ESMF: ESMF_DistGridCreate", rcToReturn=rc2)) &
+         call ESMF_Finalize(rc=rc)
+#else
+      if (ESMF_LogMsgFoundError(rc,                          &
          "Setup_ESMF: ESMF_DistGridCreate", rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
+#endif
 !
 ! Now create a 2D grid
       grid2D=ESMF_GridCreate(distGrid=distGrid2D, &
@@ -467,28 +519,49 @@
                              coordDimCount=(/2,2/), &
                              indexflag=ESMF_INDEX_GLOBAL, &
                              rc=rc)
-      if (ESMF_LogMsgFoundError(rc, &
-         "GridCreate failed",rcToReturn=rc2)) &
+#if defined(NERSC_USE_ESMF)
+      if (ESMF_LogFoundError(rc,                              &
+         msg="Setup_ESMF: GridCreate failed",rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
+#else
+      if (ESMF_LogMsgFoundError(rc,           &
+         "Setup_ESMF: GridCreate failed",rcToReturn=rc2)) &
+         call ESMF_Finalize(rc=rc)
+#endif
 !
 ! Add Grid Coordinates
       call ESMF_GridAddCoord(grid=grid2D, &
                              staggerloc=ESMF_STAGGERLOC_CENTER, &
                              rc=rc)
-      if (ESMF_LogMsgFoundError(rc, &
-         "GridAddCoord failed",rcToReturn=rc2)) &
+#if (USE_ESMF_5)
+      if (ESMF_LogFoundError(rc,                                &
+         msg="Setup_ESMF: GridAddCoord failed",rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
+#else
+      if (ESMF_LogMsgFoundError(rc,             &
+         "Setup_ESMF: GridAddCoord failed",rcToReturn=rc2)) &
+         call ESMF_Finalize(rc=rc)
+#endif
        call ESMF_GridGetCoord(grid=grid2D, &
                               CoordDim=1, &
                               localDe=0, &
                               staggerloc=ESMF_STAGGERLOC_CENTER, &
                               computationalLbound=lbnd, &
                               computationalUbound=ubnd, &
+#if defined(NERSC_USE_ESMF)
+                              fArrayptr=Xcoord, &
+#else
                               fptr=Xcoord, &
+#endif
                               rc=rc)
-      if (ESMF_LogMsgFoundError(rc, &
-         "GridGetCoord-1 failed",rcToReturn=rc2)) &
+      if (ESMF_LogFoundError(rc, &
+#if defined(NERSC_USE_ESMF)
+         msg="Setup_ESMF: GridGetCoord-1 failed",rcToReturn=rc2)) &
+#else
+         "Setup_ESMF: GridGetCoord-1 failed",rcToReturn=rc2)) &
+#endif
          call ESMF_Finalize(rc=rc)
+
 #if defined(ARCTIC)
 ! --- Arctic (tripole) domain, top row is replicated (ignore it)
       jja = min( jj, jtdm-1-j0 )
@@ -500,38 +573,76 @@
           Xcoord(i+i0,j+j0) = plon(i,j)
         enddo
       enddo
-      call ESMF_GridGetCoord(grid=grid2D, &
-                             CoordDim=2, &
-                             localDe=0, &
+      call ESMF_GridGetCoord(grid=grid2D,                       &
+                             CoordDim=2,                        &
+                             localDe=0,                         &
                              staggerloc=ESMF_STAGGERLOC_CENTER, &
-                             computationalLbound=lbnd, &
-                             computationalUbound=ubnd, &
-                             fptr=Ycoord, &
+                             computationalLbound=lbnd,          &
+                             computationalUbound=ubnd,          &
+#if defined(NERSC_USE_ESMF)
+                             fArrayptr=Ycoord,                  &
+#else
+                             fptr=Ycoord,                       &
+#endif
                              rc=rc)
-      if (ESMF_LogMsgFoundError(rc, &
-         "GridGetCoord-2 failed",rcToReturn=rc2)) &
+#if defined(NERSC_USE_ESMF)
+      if (ESMF_LogFoundError(rc,                                  &
+         msg="Setup_ESMF: GridGetCoord-2 failed",rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
+#else
+      if (ESMF_LogMsgFoundError(rc,                           &
+         "Setup_ESMF: GridGetCoord-2 failed",rcToReturn=rc2)) &
+         call ESMF_Finalize(rc=rc)
+#endif
       do j= 1,jja
         do i= 1,ii
           Ycoord(i+i0,j+j0) = plat(i,j)
         enddo
       enddo
-      CALL ESMF_GridAddItem(grid=grid2D, &
+#if defined(NERSC_USE_ESMF)
+      CALL ESMF_GridAddItem(grid2D,                            &
+                            ESMF_GRIDITEM_MASK,                &
                             staggerloc=ESMF_STAGGERLOC_CENTER, &
-                            item=ESMF_GRIDITEM_MASK, &
                             rc=rc)
-      if (ESMF_LogMsgFoundError(rc, &
-         "GridAddItem failed",rcToReturn=rc2)) &
-         call ESMF_Finalize(rc=rc)
-      CALL ESMF_GridGetItem(grid=grid2D, &
-                            localDE=0, &
+#else
+      CALL ESMF_GridAddItem(grid=grid2D,                       &
                             staggerloc=ESMF_STAGGERLOC_CENTER, &
-                            item=ESMF_GRIDITEM_MASK, &
-                            fptr=mask_ptr, &
+                            item=ESMF_GRIDITEM_MASK,           &
                             rc=rc)
-      if (ESMF_LogMsgFoundError(rc, &
-         "GridGetItem failed",rcToReturn=rc2)) &
+#endif
+#if defined(NERSC_USE_ESMF)
+      if (ESMF_LogFoundError(rc,                               &
+         msg="Setup_ESMF: GridAddItem failed",rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
+#else
+      if (ESMF_LogMsgFoundError(rc,                        &         
+         "Setup_ESMF: GridAddItem failed",rcToReturn=rc2)) &
+         call ESMF_Finalize(rc=rc)
+#endif
+#if defined(NERSC_USE_ESMF)
+      CALL ESMF_GridGetItem(grid2D,                            &
+                            ESMF_GRIDITEM_MASK,                &
+                            localDE=0,                         &
+                            staggerloc=ESMF_STAGGERLOC_CENTER, &
+                            fArrayptr=mask_ptr,                &
+                            rc=rc)
+#else
+      CALL ESMF_GridGetItem(grid=grid2D,                       &
+                            localDE=0,                         &
+                            staggerloc=ESMF_STAGGERLOC_CENTER, &
+                            item=ESMF_GRIDITEM_MASK,           &
+                            fptr=mask_ptr,                     &
+                            rc=rc)
+#endif
+#if defined(NERSC_USE_ESMF)
+      if (ESMF_LogFoundError(rc,                               &
+         msg="Setup_ESMF: GridGetItem failed",rcToReturn=rc2)) &
+         call ESMF_Finalize(rc=rc)
+#else
+      if (ESMF_LogMsgFoundError(rc,                            &
+         "Setup_ESMF: GridGetItem failed",rcToReturn=rc2))     &
+         call ESMF_Finalize(rc=rc)
+#endif
       mask_ptr(:,:) = 0  !all land, outside active tile
       do j= 1,jja
         do i= 1,ii
@@ -541,9 +652,15 @@
 !
 !  Associate grid with ESMF gridded component
       call ESMF_GridCompSet(gridComp, grid=grid2D, rc=rc)
-      if (ESMF_LogMsgFoundError(rc, &
+#if defined(NERSC_USE_ESMF)
+      if (ESMF_LogFoundError(rc,                         &
+         msg="Setup_ESMF: GridCompSet", rcToReturn=rc2)) &
+         call ESMF_Finalize(rc=rc)
+#else
+      if (ESMF_LogMsgFoundError(rc,                  &
          "Setup_ESMF: GridCompSet", rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
+#endif
 !
 !  Setup export fields, bundles & state
       do i=1,numExpFields
@@ -557,13 +674,25 @@
         expData(i)%p(:,:) = 0.0
       enddo
 !
-!  Create bundle from list of fields
-       expBundle=ESMF_FieldBundleCreate(numExpFields, &
-                        expField(:), name='HYCOM Export', &
+! Create bundle from list of fields
+#if defined(NERSC_USE_ESMF)
+       expBundle=ESMF_FieldBundleCreate(                    &
+                        fieldList=expField(1:numExpFields), &
+                        name='HYCOM Export',                &
                         rc=rc)
+#else
+       expBundle=ESMF_FieldBundleCreate(numExpFields,     &
+                        expField(:), name='HYCOM Export', &
+                        rc=rc)                            
+#endif
 !
 !  Add bundle to the export state
+#if (NERSC_USE_ESMF)
+       call ESMF_StateAdd(expState,fieldBundleList=(/expBundle/),rc=rc)
+#else
        call ESMF_StateAdd(expState,expBundle,rc=rc)
+#endif
+
 !
 !  Setup import fields, bundles & state
       do i = 1,numImpFields
@@ -601,13 +730,24 @@
        siv_import(:,:) = 0.0 !Sea Ice Y-Velocity
 !
 !  Create bundle from list of fields
-      impBundle=ESMF_FieldBundleCreate(numImpFields, &
-                                       impField(:), &
-                                       name='HYCOM Import', &
-                                       rc=rc)
+#if defined(NERSC_USE_ESMF)
+      impBundle=ESMF_FieldBundleCreate(                      &
+                         fieldList=impField(1:numImpFields), &
+                         name='HYCOM Import',                &
+                         rc=rc)
+#else
+      impBundle=ESMF_FieldBundleCreate(numImpFields,         &
+                                       impField(:),          &
+                                       name='HYCOM Import',  &
+                                       rc=rc)                &
+#endif
 !
 !  Add bundle to the import state
+#if defined(NERSC_USE_ESMF)
+      call ESMF_StateAdd(impState,fieldBundleList=(/impBundle/),rc=rc)
+#else
       call ESMF_StateAdd(impState,impBundle,rc=rc)
+#endif
 !
       ocn_mask_init = .true.  !still need to initialize ocn_mask
 !
@@ -622,20 +762,26 @@
       real    ssh2m
       real    tmxl,smxl,umxl,vmxl,hfrz,tfrz,t2f,ssfi
       real    dp1,usur1,vsur1,psur1,dp2,usur2,vsur2,psur2,thksur
-!KAL
+#if defined(NERSC_USE_ESMF)
+!coupling of atmosphere
       real :: w_s, t_x, t_y, t_dir, wndx, wndy,airt
       real :: ss_tltx, ss_tlty, vpmx, radfl, qswdwn
       real :: flagtemp, prcp, pair
       real :: t2f1, t2f2, tfrz1, tfrz2
       real, parameter ::  tzero=273.16       !celsius to kelvin offset
       real, parameter ::  rgas=287.1d0       !gas constant (j/kg/k)
-!KAL
+#endif
       !TODO: Make coupler do the majority of transformations
       !TODO: Utilize units in transformation
 !
-! --- Report
-      call ESMF_LogWrite("HYCOM Export routine called", &
+!--- Report
+#if defined(NERSC_USE_ESMF)
+      call ESMF_LogWrite("HYCOM Export_ESMF called", &
+           ESMF_LOGMSG_INFO, rc=rc)
+#else
+      call ESMF_LogWrite("HYCOM Export_ESMF called", &
            ESMF_LOG_INFO, rc=rc)
+#endif
       call ESMF_LogFlush(rc=rc)
 !
       if     (ocn_mask_init) then  !very 1st call to this routine
@@ -687,6 +833,7 @@
             smxl=0.
             tmxl=0.
             hfrz = min( thkfrz*onem, dpbl(i,j) )
+#if defined (NERSC_T2F)
             do k= 1,kk
               dp1   = min( dp(i,j,k,n), max( 0.0, hfrz-psur1 ) )
               dp2   = min( dp(i,j,k,m), max( 0.0, hfrz-psur2 ) )
@@ -713,11 +860,15 @@
             smxl = smxl / max(psur1+psur2,onemm)
             tmxl = tmxl / max(psur1+psur2,onemm)
             ssfi = ssfi*.5
-!
-! --------- KAL - flux limting moved here
-            ssfi = max(-1000.0,min(1000.0,ssfi))  !as in CICE
-!
-! --------- TODO: Average to p-cell center, but use dp correctly...
+#else
+! standard - only valid for linear freezing point
+            t2f  = (spcifh*hfrz)/(baclin*icefrq*g)
+!           average both available time steps, to avoid time splitting.
+            smxl = 0.5*(saln(i,j,1,n)+saln(i,j,1,m))
+            tmxl = 0.5*(temp(i,j,1,n)+temp(i,j,1,m))
+            tfrz = tfrz_0 + smxl*tfrz_s  !salinity dependent freezing point
+            ssfi = (tfrz-tmxl)*t2f       !W/m^2 into ocean
+#endif
 ! --------- average currents over top thkcdw meters
             thksur = onem*min( thkcdw, depths(i,j) ) 
             usur1  = 0.0
@@ -757,11 +908,12 @@
                                          vbavg(i,j+1,2)  )
             util2(i,j)              = umxl
             util3(i,j)              = vmxl
-            expData(1)%p(i+i0,j+j0) = tmxl
+            expData(1)%p(i+i0,j+j0) = tmxl                           !in C
             expData(2)%p(i+i0,j+j0) = smxl
             expData(5)%p(i+i0,j+j0) = ssh2m*srfhgt(i,j)  !ssh in m
             expData(6)%p(i+i0,j+j0) = max(-1000.0,min(1000.0,ssfi))  !as in CICE
             expData(7)%p(i+i0,j+j0) = dpbl(i,j)*qonem
+#if defined(NERSC_ATM_CPL)
 !KAL
 !KAL        Set CICE wind fields based on HYCOM taux/tauy etc
 !KAL        only one windflag case covered for now. Make more generic
@@ -911,6 +1063,7 @@
                call xchalt('Setup_ESMF: unhandled empflg=3')
                stop 'Setup_ESMF: unhandled empflg=3'
             end if
+#endif
           else
             util2(i,j)              = 0.0
             util3(i,j)              = 0.0
@@ -935,10 +1088,14 @@
       enddo !j
 !
 ! --- Report
+#if defined(NERSC_USE_ESMF)
+      call ESMF_LogWrite("HYCOM Export routine returned", &
+           ESMF_LOGMSG_INFO, rc=rc)
+#else
       call ESMF_LogWrite("HYCOM Export routine returned", &
            ESMF_LOG_INFO, rc=rc)
+#endif
       call ESMF_LogFlush(rc=rc)
-!
       end subroutine Export_ESMF
 
       subroutine Import_ESMF()
@@ -948,8 +1105,13 @@
       integer i,j,rc
 !
 ! --- Report
+#if defined(NERSC_USE_ESMF)
       call ESMF_LogWrite("HYCOM Import routine called", &
+           ESMF_LOGMSG_INFO, rc=rc)
+#else
+       call ESMF_LogWrite("HYCOM Import routine called", &
            ESMF_LOG_INFO, rc=rc)
+#endif
       call ESMF_LogFlush(rc=rc)
 !
 ! --- Assume Import State is as defined in Setup_ESMF
@@ -983,9 +1145,15 @@
                 fswice(i,j) =  impData( 4)%p(i+i0,j+j0) !Solar Heat Flux thru Ice to Ocean
                 flxice(i,j) =  fswice(i,j) + &
                                impData( 5)%p(i+i0,j+j0) !Ice Freezing/Melting Heat Flux
+#if defined(NERSC_saltflux)
+                sflice(i,j) =  impData( 6)%p(i+i0,j+j0)*1.e3 - &
+                               impData( 7)%p(i+i0,j+j0)*saln(i,j,1,n)
+! NEED TO CHECK which is right
+#else
                 sflice(i,j) =  impData( 6)%p(i+i0,j+j0)*1.e3
                                                         !Ice Freezing/Melting Salt Flux
                 wflice(i,j) =  impData( 7)%p(i+i0,j+j0) !Ice Water Flux
+#endif
                 temice(i,j) =  impData( 8)%p(i+i0,j+j0) !Sea Ice Temperature
                   si_t(i,j) =  impData( 8)%p(i+i0,j+j0) !Sea Ice Temperature
                 thkice(i,j) =  impData( 9)%p(i+i0,j+j0) !Sea Ice Thickness
@@ -1027,6 +1195,7 @@
           endif !ishlf
         enddo !i
       enddo !j
+#if defined(NERSC_USE_ESMF)
 ! --- Added by KAL. Mainly needed for si_u and si_v, but lets do everything for now ...
 ! --- NB: May need to set vland first...
       call xctilr( sic_import,1,1,nbdy,nbdy,halo_ps)  !Sea Ice Concentration
@@ -1063,6 +1232,7 @@
         call xctilr(  si_u,1,1,nbdy,nbdy,halo_pv)  !Sea Ice X-Velocity
         call xctilr(  si_v,1,1,nbdy,nbdy,halo_pv)  !Sea Ice Y-Velocity
       endif
+#endif
 #if defined(ARCTIC)
 !
 ! --- update last active row of array
@@ -1124,8 +1294,14 @@
       enddo !j
 !
 ! --- Report
+#if defined(NERSC_USE_ESMF)
+      call ESMF_LogWrite("HYCOM Import routine returned", &
+           ESMF_LOGMSG_INFO, rc=rc)
+#else
       call ESMF_LogWrite("HYCOM Import routine returned", &
            ESMF_LOG_INFO, rc=rc)
+      call ESMF_LogFlush(rc=rc)
+#endif
       call ESMF_LogFlush(rc=rc)
 !
       end subroutine Import_ESMF
@@ -1146,8 +1322,13 @@
       real         coord,xmin,xmax,sumssu,sumssv,sumsiu,sumsiv
 !
 ! --- Report
+#if defined(NERSC_USE_ESMF)
+      call ESMF_LogWrite("HYCOM Archive_ESMF called", &
+           ESMF_LOGMSG_INFO, rc=rc)
+#else
       call ESMF_LogWrite("HYCOM Archive routine called", &
            ESMF_LOG_INFO, rc=rc)
+#endif
       call ESMF_LogFlush(rc=rc)
 !
       write(cfile,'(a,i4.4,a1,i3.3,a1,i2.2)') &
@@ -1161,8 +1342,13 @@
       if     (lexist) then
 !
 ! ---   Report
+#if defined(NERSC_USE_ESMF)
+        call ESMF_LogWrite("HYCOM Archive_ESMF returned early", &
+             ESMF_LOGMSG_INFO, rc=rc)
+#else
         call ESMF_LogWrite("HYCOM Archive routine returned early", &
              ESMF_LOG_INFO, rc=rc)
+#endif
         call ESMF_LogFlush(rc=rc)
 !
         if (mnproc.eq.1) then
@@ -1305,7 +1491,13 @@
       do j= 1,jja
         do i= 1,ii
           if     (util2(i,j).ne.0.0) then
+#if defined (NERSC_saltflux)
+!virtual salt flux - which is right?
+            util1(i,j) = impData( 6)%p(i+i0,j+j0)*1.e3 - &
+                         impData( 7)%p(i+i0,j+j0)*saln(i,j,1,n)
+#else
             util1(i,j) = -impData( 7)%p(i+i0,j+j0)  !water flux
+#endif
           else
             util1(i,j) = hugel !mask where there is no ice
           endif !ice:no-ice
@@ -1328,7 +1520,11 @@
       write (nop,117) cname,nstep,time,0,coord,xmin,xmax
       call flush(nop)
       endif !1st tile
+#if defined (NERSC_saltflux)
+      cname = 'sflice  '
+#else
       cname = 'wflice  '
+#endif
       call zaiowr(util1,ishlf,.false.,   & !mask on ice
                   xmin,xmax, nopa, .false.)
       if     (mnproc.eq.1) then
@@ -1368,14 +1564,19 @@
       endif !NaN
 !
 ! ---   Report
+#if defined(NERSC_USE_ESMF)
+        call ESMF_LogWrite("HYCOM Archive routine returned", &
+             ESMF_LOGMSG_INFO, rc=rc)
+#else
         call ESMF_LogWrite("HYCOM Archive routine returned", &
              ESMF_LOG_INFO, rc=rc)
         call ESMF_LogFlush(rc=rc)
+#endif
 !
       end subroutine Archive_ESMF
-#endif /* USE_ESMF4 */
+#endif /* USE_ESMF4 and NERSC_USE_ESMF*/
 
-#if defined(USE_ESMF4)
+#if defined(USE_ESMF4) || defined(NERSC_USE_ESMF)
       subroutine HYCOM_Init  &
                   (gridComp, impState, expState, extClock, rc)
 !
@@ -1411,30 +1612,51 @@
 !
 # include "stmt_fns.h"
 !
-#if defined(USE_ESMF4)
+#if defined(USE_ESMF4) || defined(NERSC_USE_ESMF)
       integer                :: rc2
       character(ESMF_MAXSTR) :: msg
 !
 ! --- Report
+#if defined(NERSC_USE_ESMF)
+      call ESMF_LogWrite("HYCOM initialize routine called", &
+           ESMF_LOGMSG_INFO, rc=rc)
+#else
       call ESMF_LogWrite("HYCOM initialize routine called", &
            ESMF_LOG_INFO, rc=rc)
+#endif
       call ESMF_LogFlush(rc=rc)
 !
 ! --- Get VM from gridComp
       call ESMF_GridCompGet(gridComp, vm=vm, rc=rc)
+#if defined(NERSC_USE_ESMF)
+      if (ESMF_LogFoundError(rc,                           &
+      msg="HYCOM_Init: GridCompGet failed", rcToReturn=rc2)) &
+      call ESMF_Finalize(rc=rc)
+#else
       if (ESMF_LogMsgFoundError(rc, &
          "HYCOM_Init: GridCompGet failed", rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
+#endif
 !
 ! --- Get VM info
       call ESMF_VMGet(vm, &
            petCount=petCount, localPET=localPet, &
            mpiCommunicator=mpiCommunicator, rc=rc)
+#if defined(NERSC_USE_ESMF)
+      if (ESMF_LogFoundError(rc,                                  &
+          msg="HYCOM_Init: GridCompGet failed", rcToReturn=rc2))  &
+          call ESMF_Finalize(rc=rc)
+#else
       if (ESMF_LogMsgFoundError(rc, &
          "HYCOM_Init: VMGet failed", rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
+#endif
       write(msg,'(a,i4)') "HYCOM_Init: petCount = ",petCount
+#if defined(NERSC_USE_ESMF)
+      call ESMF_LogWrite(msg, ESMF_LOGMSG_INFO, rc=rc)
+#else
       call ESMF_LogWrite(msg, ESMF_LOG_INFO, rc=rc)
+#endif
       call ESMF_LogFlush(rc=rc)
 !
 ! --- initialize hycom message passing.
@@ -1467,7 +1689,7 @@
       call xctmrn(54,'incupd')
       call xctmrn(55,'aslsav')
       call xctmrn(56,'asseln')
-#if defined(USE_ESMF4) || defined (ESPC_COUPLE)
+#if defined(USE_ESMF4) || defined (ESPC_COUPLE) || defined(NERSC_USE_ESMF)
       call xctmrn(78,'HY_Ini')
       call xctmrn(79,'HY_Out')
       call xctmrn(80,'HY_Run')
@@ -1496,7 +1718,7 @@
 
 ! --- model is to be integrated from time step 'nstep1' to 'nstep2'
 ! either get time from coupler or read from limits
-#if ! defined (USE_ESMF4)
+#if ! defined (USE_ESMF4) || ! defined(NERSC_USE_ESMF)
       if ((present(hycom_start_dtg)) .and. (present(hycom_end_dtg))) then
          day1 = hycom_start_dtg
          day2 = hycom_end_dtg
@@ -1700,11 +1922,16 @@
 ! --- set up parameters defining the geographic environment
 !
       call geopar
-#if defined(USE_ESMF4)
+#if defined(USE_ESMF4) || defined(NERSC_USE_ESMF)
 !
 ! --- set up ESMF data structures
 !
       call Setup_ESMF(gridComp, impState, expState, extClock, rc=rc)
+#if defined(NERSC_USE_ESMF)
+      if (ESMF_LogFoundError(rc, &
+          msg="HYCOM_Init: Setup_ESMF failed", rcToReturn=rc2)) &
+         call ESMF_Finalize(rc=rc)
+#else
       if (ESMF_LogMsgFoundError(rc, &
          "HYCOM_Init: Setup_ESMF failed", rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
@@ -1870,7 +2097,7 @@
 ! ---   start from restart file
 !
         restart_cpl = .false.
-#if ! defined (USE_ESMF4)
+#if ! defined (USE_ESMF4) || ! defined(NERSC_USE_ESMF)
         if (present(pointer_filename)) then
           open(1,file=trim(pointer_filename),form='formatted', &
                  status='old')
@@ -1878,22 +2105,20 @@
           close(1)
           restart_cpl = .true.
         endif
-!KAL    flnmra = trim(flnmrsi)//'.a'
-!KAL    flnmrb = trim(flnmrsi)//'.b'
-!KAL    flnmra = restart_name(day1,yrflag,"in")
+#endif
+#if defined(NERSC_HYCOM_CICE)
         flnmra = restart_name(day1,"in")
         flnmrb = trim(flnmra)//".b"
         flnmra = trim(flnmra)//".a"
-        call restart_in(nstep0,dtime0, flnmra,flnmrb)
-#if defined(NERSC_HYCOM_CICE)
         si_u=0.
         si_v=0.
         covice=0.
         thkice=0.
-#endif
+#else
         flnmra = trim(flnmrsi)//'.a'
         flnmrb = trim(flnmrsi)//'.b'
-        call restart_in(nstep0,dtime0, flnmra,flnmrb,restart_cpl)
+#endif
+        call restart_in(nstep0,dtime0, flnmra,flnmrb)
         surflx(:,:) = 0.0
         salflx(:,:) = 0.0
         wtrflx(:,:) = 0.0
@@ -2287,7 +2512,7 @@
         endif ! full insertion of update
       endif
 !
-#if defined(USE_ESMF4)
+#if defined(USE_ESMF4) || defined(NERSC_USE_ESMF)
 !
 ! --- Fill the Export State with the initial fields.
 !
@@ -2298,9 +2523,9 @@
 !KAL  call Export_ESMF
 !
 ! --- Report
-      call ESMF_LogWrite("HYCOM initialize routine returned", &
-           ESMF_LOG_INFO, rc=rc)
-      call ESMF_LogFlush(rc=rc)
+!      call ESMF_LogWrite("HYCOM initialize routine returned", &
+!           ESMF_LOG_INFO, rc=rc)
+!      call ESMF_LogFlush(rc=rc)
 #else
 !
 ! --- Only here for compatibility with coupled runs.
@@ -2470,15 +2695,14 @@
       call xctmr0(78)  !time since HYCOM_Init
 !
 !KAL
-#if defined(USE_ESMF)
+#if defined(NERSC_USE_ESMF)
       call setup_esmf_kal(gridComp,extClock)
 #endif
 !KAL
       end subroutine HYCOM_Init
 
-!KAL  Phase 2 init. Very simple for now
-      subroutine HYCOM_Init_2
-#if defined(USE_ESMF) &
+#if defined(NERSC_USE_ESMF) 
+      subroutine HYCOM_Init_2 &
                  (gridComp, impState, expState, extClock, rc)
 !
 ! --- Calling parameters
@@ -2489,57 +2713,33 @@
       integer, intent(out) :: rc
       character(len=ESMF_MAXSTR) msg
       integer rc2
-#endif
 !
 !
 ! --- Report
-#if defined(USE_ESMF)
-#if (USE_ESMF_5)
       call ESMF_LogWrite("HYCOM initialize routine 2 called", &
            ESMF_LOGMSG_INFO, rc=rc)
-#else
-      call ESMF_LogWrite("HYCOM initialize routine 2 called", &
-           ESMF_LOG_INFO, rc=rc)
-#endif
       call ESMF_LogFlush(rc=rc)
-#endif
 !
 ! --- Set what freezing point parameterization to use 
-#if defined(USE_ESMF)
       call ESMF_AttributeGet(gridComp, &
          name="CICE_ktherm",value=CICE_ktherm, &
           rc=rc)
-#if (USE_ESMF_5)
+
       if (ESMF_LogFoundError(rc, &
          msg="hycom_init_2: attributeget CICE_ktherm", rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
-#else
-      if (ESMF_LogMsgFoundError(rc, &
-         "hycom_init_2: attributeget CICE_ktherm", rcToReturn=rc2)) &
-         call ESMF_Finalize(rc=rc)
-#endif
 ! --- Set what freezing point parameterization to use 
       call ESMF_AttributeGet(gridComp, &
          name="CICE_tfrz_option",value=CICE_tfrz_option, &
           rc=rc)
-#if (USE_ESMF_5)
       if (ESMF_LogFoundError(rc, &
          msg="hycom_init_2: attributeget CICE_tfrz_option",  &
          rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
-#else
-      if (ESMF_LogMsgFoundError(rc, &
-         "hycom_init_2: attributeget CICE_tfrz_option", rcToReturn=rc2)) &
-         call ESMF_Finalize(rc=rc)
-#endif
 
       write(msg,'(a,i5,a)') "hycom_init_2: CICE_ktherm=",CICE_ktherm, &
          " CICE_tfrz_option="//trim(CICE_tfrz_option)
-#if (USE_ESMF_5)
       call ESMF_LogWrite(trim(msg),ESMF_LOGMSG_INFO, rc=rc)
-#else
-      call ESMF_LogWrite(trim(msg),ESMF_LOG_INFO, rc=rc)
-#endif
       call ESMF_LogFlush(rc=rc)
 
 ! --- 
@@ -2551,23 +2751,15 @@
       elseif (trim(CICE_tfrz_option)=="minus1p8") then
          tfrz_opt = 3
       else 
-#if (USE_ESMF_5)
-         call ESMF_LogWrite( &
-             "hycom_init_2: Unknown CICE tfrz_option:"// &
-              trim(CICE_tfrz_option), &
-              ESMF_LOGMSG_ERROR, rc=rc)
-#else
-         call ESMF_LogWrite( &
-             "hycom_init_2: Unknown CICE tfrz_option:"// &
-              trim(CICE_tfrz_option), &
-              ESMF_LOG_ERROR, rc=rc)
-#endif
-         call ESMF_LogFlush(rc=rc)
-         call ESMF_Finalize(rc=rc)
+          call ESMF_LogWrite( &
+              "hycom_init_2: Unknown CICE tfrz_option:"// &
+               trim(CICE_tfrz_option), &
+               ESMF_LOGMSG_ERROR, rc=rc)
+          call ESMF_LogFlush(rc=rc)
+          call ESMF_Finalize(rc=rc)
       end if
 ! --- Moved from phase 1 init
       call Export_ESMF
-#endif
       end subroutine HYCOM_Init_2
 
 ! --- KAL: From CICE 
@@ -2586,7 +2778,7 @@
          stop '(mod_hycom CICE_tf: illegal value)'
       endif
       end function
-
+#endif
 
 
       subroutine HYCOM_Run
@@ -2891,7 +3083,7 @@
       call hycom_fabm_input_update(dtime, dyear0, dyear, dmonth)
 #endif
 !
-#if defined(USE_ESMF4)
+#if defined(USE_ESMF4) || defined(NERSC_USE_ESMF)
 !KAL
 !KAL Get get_import from ocean gridComp attribute
        call ESMF_AttributeGet(impState,  &
@@ -4091,7 +4283,7 @@
         call xctmr1(53)
       endif  ! histry.or.hiprof.or.hitile.or.hisurf.or.lfatal
 !
-#if defined(USE_ESMF4)
+#if defined(USE_ESMF4) || defined (NERSC_USE_ESMF)
 !KAL
 !KAL Get put_export from ocean gridComp attribute
        call ESMF_AttributeGet(expState,  &
@@ -4443,19 +4635,36 @@
 #endif
 
       end_of_run = nstep.ge.nstep2
+#if defined (NERSC_USE_ESMF)
+!KAL Add end_of_run to gridComp as attribute - only ESMF5+
+      call ESMF_AttributeSet(gridComp, &
+         name="end_of_run",value=end_of_run, &
+          rc=rc)
+      if (ESMF_LogFoundError(rc, &
+         msg="hycom_run: attributeset end_of_run", rcToReturn=rc2)) &
+         call ESMF_Finalize(rc=rc)
+!KAL Add OCN_restart to gridComp as attribute
+      call ESMF_AttributeSet(gridComp, &
+         name="OCN_restart",value=restrt, &
+          rc=rc)
+      if (ESMF_LogFoundError(rc, &
+         msg="hycom_run: attributeset OCN_restart", rcToReturn=rc2)) &
+         call ESMF_Finalize(rc=rc)
+#endif
+#endif
 !
 ! --- at end: output float restart file 
 !
       if     (synflt .and. end_of_run) then
         call floats_restart
       endif !synflt+end_of_run
-#if defined(USE_ESMF4) || defined (ESPC_COUPLE)
+#if defined(USE_ESMF4) || defined (ESPC_COUPLE) || defined(NERSC_USE_ESMF)
       call xctmr1(80)   !time  inside HYCOM_Run
       call xctmr0(79)   !time outside HYCOM_Run
 #endif
       end subroutine HYCOM_Run
 
-#if defined(USE_ESMF4)
+#if defined(USE_ESMF4) || defined(NERSC_USE_ESMF)
       subroutine HYCOM_Final &
                  (gridComp, impState, expState, extClock, rc)
 !
@@ -4467,8 +4676,13 @@
       integer, intent(out) :: rc
 !
 ! --- Report
+#if (USE_ESMF_5)
+      call ESMF_LogWrite("HYCOM finalize routine called", &
+           ESMF_LOGMSG_INFO, rc=rc)
+#else
       call ESMF_LogWrite("HYCOM finalize routine called", &
            ESMF_LOG_INFO, rc=rc)
+#endif
       call ESMF_LogFlush(rc=rc)
 !
 ! --- Destroy internal ocean clock
@@ -4508,7 +4722,7 @@
 #endif /* USE_ESMF4:else */
 
 
-#if defined(USE_ESMF)
+#if defined(NERSC_USE_ESMF)
       subroutine setup_esmf_kal(gridComp,extClock)
       implicit none 
       type(ESMF_Clock)     :: extClock
@@ -4524,33 +4738,6 @@
 
 
 
-!KAL  Set calendar and reference time. Ref time from forday
-!     if (yrflag.eq.0) then 
-!        calendar = ESMF_CalendarCreate(ESMF_CALKIND_360DAY,
-!    &      name="360DAY", rc=rc)
-!        call ESMF_TimeSet(refTime,
-!    &      calendar=calendar,yy=1,mm=1,dd=16,h=0,rc=rc)
-!     elseif (yrflag.eq.1) then 
-!        ! KAL Custom calendar not fully ot supported in 5.2.0. or so it seems...
-!        ! KAL So we use the NOLEAP calendar in stead
-!        calendar = ESMF_CalendarCreate(name="366DAYS",
-!    &      daysPerMonth=daypm_366,
-!    &      rc=rc)
-!        calendar = ESMF_CalendarCreate(ESMF_CALKIND_NOLEAP,
-!    &      name="NOLEAP", rc=rc)
-!        call ESMF_TimeSet(refTime,
-!    &      yy=1,mm=1,dd=16,h=0,m=0,s=0,
-!    &      calendar=calendar,rc=rc)
-!     elseif (yrflag.eq.2) then 
-!        ! KAL Custom calendar not fully supported in 5.2.0
-!        ! KAL So we use the NOLEAP calendar in stead
-!        calendar = ESMF_CalendarCreate(name="366DAYS",
-!    &      daysPerMonth=(/31,29,31,30,31,30,31,31,30,31,30,31/),
-!    &      rc=rc)
-!        calendar = ESMF_CalendarCreate(ESMF_CALKIND_NOLEAP,
-!    &      name="NOLEAP", rc=rc)
-!        call ESMF_TimeSet(refTime,
-!    &      calendar=calendar,yy=1,mm=1,dd=1,h=0,rc=rc)
       if (yrflag.eq.3) then 
          calendar = ESMF_CalendarCreate(ESMF_CALKIND_GREGORIAN, &
             name="Gregorian", rc=rc)

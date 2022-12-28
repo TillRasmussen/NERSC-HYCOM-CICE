@@ -55,7 +55,7 @@
 ! --- Return codes for error checks
       integer :: rc,rc2
 !
-! --- Miscellaneous
+! --- ICE coupling frequency
       integer :: ice_nts_cpl,ocn_cpl_day
 !
 ! --- KAL - Moved from module acces to state access

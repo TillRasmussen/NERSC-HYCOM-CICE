@@ -58,7 +58,7 @@
       if (mnproc.eq.1) then
       write(lp,*)
       endif !1st tile
-      call blkini(itest 'idm   ')
+      call blkini(itest ,'idm   ')
       call blkini(jtest ,'jdm   ')
 !
       if     (itdm.eq.-1) then !serial relo case only
@@ -841,6 +841,9 @@
 !                 (1.0 for no relaxation)
 ! --- 'hybiso' = HYBGEN: Use PCM if layer is within hybiso of target density
 !                 (0.0 for no PCM; large to recover pre-2.2.09 behaviour)
+! --- 'hybthn' = HYBGEN: ratio of layer thicknesses to select the thiner
+!                 (1.0 for original behaviour, i.e. key only on thickness;
+!                  5.0 to favor the larger density anomaly over thickness)
 ! --- 'hybmap' = HYBGEN:  remapper  flag (0=PCM, 1=PLM,    2=PPM,  3=WENO-like)
 ! --- 'hybflg' = HYBGEN:  generator flag (0=T&S, 1=th&S,   2=th&T)
 ! --- 'advflg' = thermal  advection flag (0=T&S, 1=th&S,   2=th&T)
@@ -877,6 +880,7 @@
       call blkinl(hybraf,'hybraf')
       call blkinr(hybrlx,'hybrlx','(a6," =",f10.4," time steps")')
       call blkinr(hybiso,'hybiso','(a6," =",f10.4," kg/m^3")')
+      call blkinr(hybthn,'hybthn','(a6," =",f10.4," ")')
       call blkini(hybmap,'hybmap')
       call blkini(hybflg,'hybflg')
       call blkini(advflg,'advflg')
@@ -893,15 +897,15 @@
                                &" m/s (-ve if variable)")')
       call blkinr(thkdf2,'thkdf2','(a6," =",f10.4," m/s")')
       call blkinr(thkdf4,'thkdf4','(a6," =",f10.4, &
-                                " m/s (-ve if variable)")')
+                               &" m/s (-ve if variable)")')
       call blkinr(temdf2,'temdf2','(a6," =",f10.4," m/s")')
       call blkinr(temdfc,'temdfc', &
-          '(a6," =",f10.4," (0.0,1.0 conserve dens,temp resp.)")')
+         &'(a6," =",f10.4," (0.0,1.0 conserve dens,temp resp.)")')
       call blkinr(vertmx,'vertmx','(a6," =",f10.4," m/s")')
       call blkinr(cbar,  'cbar  ','(a6," =",f10.4, &
-                                " m/s (-ve if variable)")')
+                               &" m/s (-ve if variable)")')
       call blkinr(cb,    'cb    ','(a6," =",f10.4, &
-                                "     (-ve if variable)")')
+                               &"     (-ve if variable)")')
       call blkinr(drglim,'drglim','(a6," =",f10.4," ")')   
 !
       if (hybrlx.lt.1.0) then
@@ -914,6 +918,16 @@
                stop '(blkdat)'
       endif
       qhybrlx = 1.0/hybrlx
+!
+      if (hybthn.lt.1.0) then
+        if (mnproc.eq.1) then
+        write(lp,'(/ a /)')  &
+         &'error - hybthn must be at least 1.0'
+        call flush(lp)
+        endif !1st tile
+        call xcstop('(blkdat)')
+               stop '(blkdat)'
+      endif
 !
       if (btrmas .and. .not.btrlfr) then
         if (mnproc.eq.1) then
@@ -2523,7 +2537,7 @@
       return
  6000 format(a6,' =',l10)
       end
-!KAL
+#if defined(NERSC_HYCOM_CICE)
 !KAL  For reading strings
       subroutine blkins(svar,cvar,sdefault,append_dot)
       use mod_xc         ! HYCOM communication interface
@@ -2598,7 +2612,7 @@
       return
  6000 format(a6,' =',i10,' filename=',a)
       end
-!KAL
+#endif
 !>
 !> Revision history
 !>
@@ -2732,3 +2746,4 @@
 !> Sep. 2019 - added oneta0
 !> Oct. 2019 - added lbmont
 !> Nov. 2019 - added wndflg=-4,-5 and amoflg
+!> Sep. 2022 - added hybthn
