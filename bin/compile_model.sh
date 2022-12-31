@@ -21,11 +21,14 @@ if [ "${V}" == "2.2.98" ]; then
 	sourcedir=$NHCROOT/hycom/RELO/src_${V}ZA-07Tsig0-i-sm-sse_relo_mpi/
 elif [ "${V}" == "2.2.98.01" ]; then
         sourcedir=$NHCROOT/hycom/RELO/src_${V}ZA-07Tsig0-i-sm-sse_relo_mpi/
+elif [ "${V}" == "3.1" ]; then
+        sourcedir=$NHCROOT/hycom/RELO/HYCOM_NERSC_src_v3.1/
 else
 	sourcedir=$NHCROOT/hycom/RELO/src_${V}G-17Tsig2-SD-i_relo_mpi/ 
 fi
 sourceconfdir=$NHCROOT/hycom/RELO/config/
-
+echo $V
+echo $sourcedir
 usage="
    This script must be run in an experiment directory as it needs to read EXPT.src
 
@@ -167,7 +170,6 @@ if [[ -n "${ESMF_DIR}" ]] &&  [[ -n "${ESMF_MOD_DIR}" ]] && [[ -n "${ESMF_LIB_DI
    echo "Using preset ESMF_DIR    =$ESMF_DIR"
    echo "Using preset ESMF_MOD_DIR=$ESMF_DIR"
    echo "Using preset ESMF_LIB_DIR=$ESMF_DIR"
-
 # If site is given, use hardcoded settings for this machine
 elif [ "$SITE" == "alvin" ] || [ "$SITE" == "elvis" ] ; then
     echo "hardcoded settings for $SITE"
@@ -294,6 +296,7 @@ fi
 #	echo "You need to use correct mod_hycom and hycom files"
 #	exit 0
 #fi
+
 if [[ !  -f $EDIR/mysource/ ]] && [[ $ICEFLG -eq 0 ]] ; then
         echo "############# copy from  $EDIR/mysource to build folder"
         rm $targetdir/mod_hycom.F
@@ -309,18 +312,17 @@ else
 #       exit 0
 fi
 
-
 # Copy hycom feature flag in expt dir if present
 [ -f $EDIR/hycom_feature_flags  ] && cp $EDIR/hycom_feature_flags $targetdir
 
 # Set up correct eq of state for hycom
-stmt=stmt_fns_SIGMA${MYTHFLAG}_${TERMS}term.h
+#stmt=stmt_fns_SIGMA${MYTHFLAG}_${TERMS}term.h
 cd $targetdir
-echo "Now setting up stmt_fns.h in $targetdir"
-rm stmt_fns.h
-ln -s ALT_CODE/$stmt stmt_fns.h
+#echo "Now setting up stmt_fns.h in $targetdir"
+#rm stmt_fns.h
+#ln -s ALT_CODE/$stmt stmt_fns.h
 echo "Now compiling cice in $targetdir. $ICEFLG" 
-echo $sourcedir
+echo $targetdir
 if [ $ICEFLG -eq 2 ] ; then
 	echo $MACROID
 	# 1) Compile CICE. Environment variables need to be passe to script
@@ -333,12 +335,16 @@ if [ $ICEFLG -eq 2 ] ; then
   		 exit $res
 	fi
 fi
+
 # Create hycom objects and final hycom_cice executable. 
 cd $targetdir
+echo $targetdir
 if [ $ICEFLG -ne 0 ] ; then
     echo "Now compiling hycom_cice in $targetdir."
+    echo $PWD
     #env ARCH=$MACROID csh Make_cice.csh
-    env csh Make_cice.csh ${MACROID} ${ICEFLG}
+#    env csh Make_cice.csh ${MACROID} ${ICEFLG}
+    env csh Make_nersc_hycom_cice.csh ${MACROID} ${ICEFLG}
     res=$?
     if [ $res -ne 0 ] ; then
         echo
@@ -359,4 +365,3 @@ else
         exit $res
     fi
 fi
-

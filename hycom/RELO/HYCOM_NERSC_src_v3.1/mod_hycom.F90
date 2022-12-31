@@ -268,7 +268,7 @@
       character(ESMF_MAXSTR)     :: msg, gridName
 !
 ! --- Report
-#if (NERSC_USE_ESMF)
+#if defined(NERSC_USE_ESMF)
       call ESMF_LogWrite("HYCOM Setup_ESMF routine called", &
            ESMF_LOGMSG_INFO, rc=rc)
 #else
@@ -459,7 +459,7 @@
       deLayout = ESMF_DELayoutCreate(vm, rc=rc)
 #if defined(NERSC_USE_ESMF)
       if (ESMF_LogFoundError(rc,                                  &
-         msg="Setup_ESMF: DELayoutCreate failed", rcToReturn=rc2) &
+         msg="Setup_ESMF: DELayoutCreate failed", rcToReturn=rc2)) &
       call ESMF_Finalize(rc=rc)
 #else
       if (ESMF_LogMsgFoundError(rc,                            &
@@ -533,7 +533,7 @@
       call ESMF_GridAddCoord(grid=grid2D, &
                              staggerloc=ESMF_STAGGERLOC_CENTER, &
                              rc=rc)
-#if (USE_ESMF_5)
+#if (NERSC_USE_ESMF)
       if (ESMF_LogFoundError(rc,                                &
          msg="Setup_ESMF: GridAddCoord failed",rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
@@ -687,7 +687,7 @@
 #endif
 !
 !  Add bundle to the export state
-#if (NERSC_USE_ESMF)
+#if defined(NERSC_USE_ESMF)
        call ESMF_StateAdd(expState,fieldBundleList=(/expBundle/),rc=rc)
 #else
        call ESMF_StateAdd(expState,expBundle,rc=rc)
@@ -1718,7 +1718,7 @@
 
 ! --- model is to be integrated from time step 'nstep1' to 'nstep2'
 ! either get time from coupler or read from limits
-#if ! defined (USE_ESMF4) || ! defined(NERSC_USE_ESMF)
+#if ! (defined (USE_ESMF4) || defined(NERSC_USE_ESMF))
       if ((present(hycom_start_dtg)) .and. (present(hycom_end_dtg))) then
          day1 = hycom_start_dtg
          day2 = hycom_end_dtg
@@ -1936,7 +1936,7 @@
          "HYCOM_Init: Setup_ESMF failed", rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
 #endif
-
+#endif
 !
 ! --- set up forcing functions
 !
@@ -2097,7 +2097,7 @@
 ! ---   start from restart file
 !
         restart_cpl = .false.
-#if ! defined (USE_ESMF4) || ! defined(NERSC_USE_ESMF)
+#if ! (defined (USE_ESMF4) || defined(NERSC_USE_ESMF))
         if (present(pointer_filename)) then
           open(1,file=trim(pointer_filename),form='formatted', &
                  status='old')
@@ -2118,7 +2118,7 @@
         flnmra = trim(flnmrsi)//'.a'
         flnmrb = trim(flnmrsi)//'.b'
 #endif
-        call restart_in(nstep0,dtime0, flnmra,flnmrb)
+        call restart_in(nstep0,dtime0, flnmra,flnmrb,restart_cpl)
         surflx(:,:) = 0.0
         salflx(:,:) = 0.0
         wtrflx(:,:) = 0.0
@@ -2780,9 +2780,8 @@
       end function
 #endif
 
-
-      subroutine HYCOM_Run
-#if defined(USE_ESMF) &
+#if defined(USE_ESMF_4) || defined(NERSC_USE_ESMF)
+      subroutine HYCOM_Run &
                  (gridComp, impState, expState, extClock, rc)
 !
 ! --- Calling parameters
@@ -2791,8 +2790,16 @@
       type(ESMF_State)     :: expState
       type(ESMF_Clock)     :: extClock
       integer, intent(out) :: rc
-#endif
+#else
+      subroutine HYCOM_Run  &
+                 (endtime,pointer_filename,restart_write)
 !
+! --- Calling parameters
+      real(8),         intent(in), optional :: endtime
+      character*80, intent(in), optional :: pointer_filename
+      logical,      intent(in), optional :: restart_write
+#endif
+      logical :: restart_cpl
 ! --- -------------------------
 ! --- execute a single timestep
 ! --- -------------------------
@@ -3088,7 +3095,7 @@
 !KAL Get get_import from ocean gridComp attribute
        call ESMF_AttributeGet(impState,  &
           name="get_import",value=get_import,rc=rc)
-#if (USE_ESMF_5)
+#if (NERSC_USE_ESMF)
       if (ESMF_LogFoundError(rc, &
          msg="hycom_run: attributeget get_import", rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
@@ -4288,7 +4295,7 @@
 !KAL Get put_export from ocean gridComp attribute
        call ESMF_AttributeGet(expState,  &
           name="put_export",value=put_export,rc=rc)
-#if (USE_ESMF_5)
+#if defined(NERSC_USE_ESMF)
       if (ESMF_LogFoundError(rc, &
          msg="hycom_run: attributeget put_export", rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
@@ -4481,7 +4488,7 @@
 ! --- restart
 !TILL 28/3  I am a bit in doubt here whether it is correct
       restart_cpl = .false.
-# if ! defined (USE_ESMF4)
+# if ! (defined (USE_ESMF4) || defined(NERSC_USE_ESMF))
       if (present(restart_write) ) then
           restart_cpl = restart_write .and. end_of_run_cpl
       else
@@ -4518,7 +4525,20 @@
         call flush(lp)
         endif !1st tile
 !
+#if ! (defined (USE_ESMF4) || defined(NERSC_USE_ESMF))
         if (restart_cpl) then
+          write(flnmra,'(a,i4.4,a,i3.3,a,i2.2)') &
+                      &'restart_', iyear,'-',jday,'-',ihour
+          open(1,file=trim(pointer_filename),form='formatted', &
+                 status='unknown')
+          write(1,'(a)')trim(flnmra)
+          close(1)
+          flnmrb = trim(flnmra)
+        else
+          flnmra = flnmrso  !.a extension added by restart_out
+          flnmrb = flnmrso  !.b extension added by restart_out
+        endif
+#elif defined(NERSC_USE_ESMF)
 !KAL    flnmra = flnmrso  !.a extension added by restart_out
 !KAL    flnmrb = flnmrso  !.b extension added by restart_out
 !KAL    flnmra = restart_name(dtime,yrflag,"out")
@@ -4532,12 +4552,10 @@
            flnmrb = trim(flnmra)//".b"
            flnmra = trim(flnmra)//".a"
         end if
-!KAL
+#else
+        flnmra = flnmrso  !.a extension added by restart_out
+        flnmrb = flnmrso  !.b extension added by restart_out
 #endif
-        else
-          flnmra = flnmrso  !.a extension added by restart_out
-          flnmrb = flnmrso  !.b extension added by restart_out
-        endif
 !
         call restart_out(nstep,dtime, flnmra,flnmrb, nstep.ge.nstep2, &
                          restart_cpl )
@@ -4651,7 +4669,6 @@
          msg="hycom_run: attributeset OCN_restart", rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
 #endif
-#endif
 !
 ! --- at end: output float restart file 
 !
@@ -4676,7 +4693,7 @@
       integer, intent(out) :: rc
 !
 ! --- Report
-#if (USE_ESMF_5)
+#if (NERSC_USE_ESMF)
       call ESMF_LogWrite("HYCOM finalize routine called", &
            ESMF_LOGMSG_INFO, rc=rc)
 #else
@@ -4746,30 +4763,16 @@
       else
          write(msg,'("Setup_esmf_kal: Unknown year flag:",i4,a)')  &
          yrflag," (hycom_cice requires yrflag=3)"
-#if (USE_ESMF_5)
          call ESMF_LogWrite(msg, ESMF_LOGMSG_ERROR, rc=rc)
-#else
-         call ESMF_LogWrite(msg, ESMF_LOG_ERROR, rc=rc)
-#endif
          call ESMF_Finalize(rc=rc)
       end if
-#if (USE_ESMF_5)
       if (ESMF_LogFoundError(rc, &
          msg="setup_esmf_kal: unable to create calender",  &
          rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
-#else
-      if (ESMF_LogMsgFoundError(rc, &
-         "setup_esmf_kal: unable to create calendar", rcToReturn=rc2)) &
-         call ESMF_Finalize(rc=rc)
-#endif
       call ESMF_TimeGet(refTime,timestring=msg)
       write(msg,'("HYCOM Ref Time:",a)') trim(msg)
-#if (USE_ESMF_5)
       call ESMF_LogWrite(msg, ESMF_LOGMSG_INFO, rc=rc)
-#else
-      call ESMF_LogWrite(msg, ESMF_LOG_INFO, rc=rc)
-#endif
       if (mnproc==1) print '(a)',msg
 
 !
@@ -4777,58 +4780,31 @@
       ! reftime is day 1, actually... 1901-01-01 Starts from 1
       call ESMF_TimeIntervalSet(tmpDt,d_r8=day1-1) 
       startTime=refTime+tmpDt
-#if (USE_ESMF_5)
       if (ESMF_LogFoundError(rc, &
          msg="setup_esmf_kal: unable to set startTime", rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
-#else
-      if (ESMF_LogMsgFoundError(rc, &
-         "setup_esmf_kal: unable to set startTime", rcToReturn=rc2)) &
-         call ESMF_Finalize(rc=rc)
-#endif
       call ESMF_TimeGet(startTime,timestring=msg)
       write(msg,'("HYCOM start Time:",a)') trim(msg)
-#if (USE_ESMF_5)
       call ESMF_LogWrite(msg, ESMF_LOGMSG_INFO, rc=rc)
-#else
-      call ESMF_LogWrite(msg, ESMF_LOG_INFO, rc=rc)
-#endif
       if (mnproc==1) print '(a)',msg
 !
 !KAL  Set stoptime reftime is day 1, actually... 1901-01-01 Starts from 1
       call ESMF_TimeIntervalSet(tmpDt,d_r8=day2-1) 
       endTime=refTime+tmpDt
-#if (USE_ESMF_5)
       if (ESMF_LogFoundError(rc, &
          msg="setup_esmf_kal: unable to set endTime", rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
-#else
-      if (ESMF_LogMsgFoundError(rc, &
-         "setup_esmf_kal: unable to set endTime", rcToReturn=rc2)) &
-         call ESMF_Finalize(rc=rc)
-#endif
       call ESMF_TimeGet(endTime,timestring=msg)
       write(msg,'("HYCOM stop  Time:",a)') trim(msg)
-#if (USE_ESMF_5)
       call ESMF_LogWrite(msg, ESMF_LOGMSG_INFO, rc=rc)
-#else
-      call ESMF_LogWrite(msg, ESMF_LOG_INFO, rc=rc)
-#endif
       if (mnproc==1) print '(a)',msg
 !
 !KAL  Set TimeInterval
       call ESMF_TimeIntervalSet(timeStep,s_r8=baclin)
-#if (USE_ESMF_5)
       if (ESMF_LogFoundError(rc, &
          msg="setup_esmf_kal: unable to set ESMF timeStep",  &
          rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
-#else
-      if (ESMF_LogMsgFoundError(rc, &
-         "setup_esmf_kal: unable to set ESMF timeStep", &
-         rcToReturn=rc2)) &
-         call ESMF_Finalize(rc=rc)
-#endif
 !
 !KAL  Apply settings to clock
       call ESMF_ClockSet(extClock,name="HYCOM Clock", &
@@ -4837,15 +4813,9 @@
          currTime=startTime, &
          stopTime=endTime, &
          rc=rc)
-#if (USE_ESMF_5)
       if (ESMF_LogFoundError(rc, &
          msg="setup_esmf_kal: unable to set extClock", rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
-#else
-      if (ESMF_LogMsgFoundError(rc, &
-         "setup_esmf_kal: unable to set extClock", rcToReturn=rc2)) &
-         call ESMF_Finalize(rc=rc)
-#endif
 
 
 !KAL Add nts_ice to gridComp as attribute nts_ice 
@@ -4853,35 +4823,23 @@
             name="nts_ice", &
             value=nts_ice, &
             rc=rc)
-#if (USE_ESMF_5)
       if (ESMF_LogFoundError(rc, &
          msg="setup_esmf_kal: attributeset nts_ice", rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
-#else
-      if (ESMF_LogMsgFoundError(rc, &
-         "setup_esmf_kal: attributeset nts_ice", rcToReturn=rc2)) &
-         call ESMF_Finalize(rc=rc)
-#endif
 !
 ! --- Add iceflg to gridComp as attribute iceflg
       call ESMF_AttributeSet(gridComp,  &
             name="OCN_iceflg", &
             value=iceflg, &
             rc=rc)
-#if (USE_ESMF_5)
       if (ESMF_LogFoundError(rc, &
          msg="setup_esmf_kal: attributeset OCN_iceflg", rcToReturn=rc2)) &
          call ESMF_Finalize(rc=rc)
-#else
-      if (ESMF_LogMsgFoundError(rc, &
-         "setup_esmf_kal: attributeset OCN_iceflg", rcToReturn=rc2)) &
-         call ESMF_Finalize(rc=rc)
-#endif
 
       end subroutine setup_esmf_kal
 
 
-#endif /* USE_ESMF:else */
+#endif /* NERSC_USE_ESMF:else */
 
       end module mod_hycom
 !

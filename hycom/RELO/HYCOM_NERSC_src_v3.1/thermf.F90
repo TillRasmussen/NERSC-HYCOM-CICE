@@ -1903,7 +1903,7 @@
           endif
         endif
 #endif
-        sssflx(i,j)=(rmus*min(p(i,j,kk+1),thkmls*onem)/g)* &
+        sssflx(i,j)=(rmus(i,j)*min(p(i,j,kk+1),thkmls*onem)/g)* &
                     sssdif
         util2(i,j)=sssflx(i,j)*scp2(i,j)
         util1(i,j)=max(util2(i,j),0.0)

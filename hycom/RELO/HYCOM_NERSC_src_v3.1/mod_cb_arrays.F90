@@ -667,6 +667,7 @@
 ! --- 'batrop' = barotropic time step
 ! ---'qhybrlx' = HYBGEN: relaxation coefficient (inverse baroclinic time steps)
 ! --- 'hybiso' = HYBGEN: Use PCM if layer is within hybiso of target density
+! --- 'hybthn' = HYBGEN: ratio of layer thicknesses to select the thiner
 ! --- 'visco2' = deformation-dependent Laplacian  viscosity factor
 ! --- 'visco4' = deformation-dependent biharmonic viscosity factor
 ! --- 'facdf4' =       speed-dependent biharmonic viscosity factor
@@ -783,7 +784,7 @@
 !
       real, save :: &
                      thbase,saln0,baclin,batrop, &
-                     qhybrlx,hybiso, &
+                     qhybrlx,hybiso,hybthn, &
                      visco2,visco4,veldf2,veldf4,facdf4, &
                      temdf2,temdfc,thkdf2,thkdf4,vertmx,diapyc, &
                      tofset,sofset,dtrate,slip,cb,cbar, &
@@ -1450,19 +1451,25 @@
                precip(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,natm), &
                radflx(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,natm), &
                 swflx(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,natm), &
-#if defined(NERSC_HYCOM_CICE)
-             swflxdwn(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,natm), &
-#endif
                surtmp(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,natm), &
-
+               seatmp(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,natm), &
+               stoc_t(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,natm), &
+               stoc_s(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,natm), &
+               stoc_u(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,natm), &
+               stoc_v(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,natm) )
+      call mem_stat_add( 16*(idm+2*nbdy)*(jdm+2*nbdy)*natm )
+#if defined(NERSC_HYCOM_CICE)
+      allocate( &
+               swflxdwn(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,natm))
+      call mem_stat_add( 1*(idm+2*nbdy)*(jdm+2*nbdy)*natm )
+#endif
 #ifdef _FABM_ 
 !     !CAGLAR: BEGIN (MAY2019)
-               dewpt(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,natm),  &
+      allocate( &         
+               dewpt(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,natm) )
+      call mem_stat_add( 1*(idm+2*nbdy)*(jdm+2*nbdy)*natm )
 !     !CAGLAR: END
 #endif
-               seatmp(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,natm) )&
-!KAL  call mem_stat_add( 12*(idm+2*nbdy)*(jdm+2*nbdy)*natm )
-      call mem_stat_add( 17*(idm+2*nbdy)*(jdm+2*nbdy)*natm )
       allocate( &
                 akpar(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,4), &
                rivers(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,4) )

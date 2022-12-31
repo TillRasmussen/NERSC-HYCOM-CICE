@@ -852,8 +852,8 @@
                intent(out)   :: h
 #else
       real,    intent(out)   :: hmin,hmax
-      real,    dimension (1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy),
-     &         intent(out)   :: h
+      real,    dimension (1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy), &
+               intent(out)   :: h
 #endif
 !
       integer        iarec

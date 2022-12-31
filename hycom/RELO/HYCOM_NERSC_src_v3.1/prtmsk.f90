@@ -49,6 +49,8 @@
           write (lp,'(32i4)')        j,(int(work(i,j)),i=i1,i2)
 !cc       write (lp,'(i4,1x,75i1)')  j,(int(work(i,j)),i=i1,i2)
 !cc       write (lp,'(i4,1x,120i1)') j,(int(work(i,j)),i=i1,i2)
+        enddo
+      enddo
       call flush(lp)
       return
       end

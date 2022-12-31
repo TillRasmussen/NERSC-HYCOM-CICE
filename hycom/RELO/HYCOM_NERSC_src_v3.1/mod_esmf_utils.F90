@@ -1,5 +1,5 @@
       module mod_esmf_utils
-#if (USE_ESMF_5)
+#if defined(NERSC_USE_ESMF)
       use ESMF
 #else
       use ESMF_Mod
@@ -16,7 +16,7 @@
       integer,         intent(in) :: rc
       character(len=*),intent(in) :: msg
       integer rc2
-#if (USE_ESMF_5)
+#if defined(NERSC_USE_ESMF)
       ESMF_LogFoundErrorWrapper=ESMF_LogFoundError(rc,msg="tst", &
          rcToReturn=rc2)
 #else
@@ -30,20 +30,20 @@
       implicit none
       character(len=*),intent(in) :: msg
       integer :: rc
-#if (USE_ESMF_5)
+#if defined(NERSC_USE_ESMF)
       call ESMF_LogWrite(msg, ESMF_LOGMSG_INFO, rc=rc)
 #else
       call ESMF_LogWrite(msg, ESMF_LOG_INFO, rc=rc)
 #endif
       call ESMF_LogFlush(rc=rc)
       end subroutine
-#endif
+!!!!#endif
 
       subroutine ESMF_LogWrite_Error_Wrapper(msg)
       implicit none
       character(len=*),intent(in) :: msg
       integer :: rc
-#if (USE_ESMF_5)
+#if defined(NERSC_USE_ESMF)
       call ESMF_LogWrite(msg, ESMF_LOGMSG_ERROR, rc=rc)
 #else
       call ESMF_LogWrite(msg, ESMF_LOG_ERROR, rc=rc)
@@ -390,12 +390,12 @@
 ! --- Get OCN_nts_cpl from ocean gridComp attribute
        call ESMF_AttributeGet(ocnGridComp,  &
           name="nts_ice",value=OCN_nts_cpl,rc=rc)
-#if (USE_ESMF_5)
+#if defined(NERSC_USE_ESMF)
       if (ESMF_LogFoundError(rc, &
-         msg="hycom_cice: attributeget OCN_nts_cpl", rcToReturn=rc2))
+         msg="hycom_cice: attribute get OCN_nts_cpl", rcToReturn=rc2)) &
 #else
       if (ESMF_LogMsgFoundError(rc, &
-         "hycom_cice: attributeget OCN_nts_cpl", rcToReturn=rc2))
+         "hycom_cice: attributeget OCN_nts_cpl", rcToReturn=rc2)) &
 #endif 
        return
 

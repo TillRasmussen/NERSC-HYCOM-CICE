@@ -2834,8 +2834,8 @@
         read (cline(i+1:),*) hminb,hmaxb
       else
         if     (mnproc.eq.1) then
-        write(lp,'(a,a / a,i5)')
-!KAL &    'error - iunit must be 900-910 or 911-916',
+        write(lp,'(a,a / a,i5)') &
+!KAL      'error - iunit must be 900-910 or 911-916',
           'error - iunit must be 899-910 or 911-916', &
                              'or 918-919 or 922-925', &
           'iunit =',iunit

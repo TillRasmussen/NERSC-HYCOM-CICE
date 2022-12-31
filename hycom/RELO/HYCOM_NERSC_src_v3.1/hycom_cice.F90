@@ -2,6 +2,7 @@
 !
 ! --- ESMF driver for HYCOM ocean model and CICE sea-ice model
 !
+#if defined(USE_ESMF_4)
       use ESMF_Mod
       use mod_esmf_utils
       use mod_hycom, only : &
@@ -25,11 +26,13 @@
             CPL_o2i         => ocn2ice_phase, &
             CPL_SetServices => OICPL_SetServices
 !
+#endif
       implicit none
 !
 ! --- Local variables
 !
 ! --- Gridded Components
+#if defined(USE_ESMF_4)
       type(ESMF_GridComp) :: ocnGridComp,      & !HYCOM as an ESMF component
                              iceGridComp      ! CICE as an ESMF component
 !
@@ -410,5 +413,6 @@
       call ESMF_VMBarrier(worldVM)
       call ESMF_Finalize(rc=rc)
 !
+#endif
       stop
       end program hycom_cice

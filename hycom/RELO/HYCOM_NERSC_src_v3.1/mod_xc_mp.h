@@ -4973,26 +4973,26 @@
 
       subroutine xctmri
       implicit none
-c
-c**********
-c*
-c  1) initialize timers.
-c
-c  2) timers  1:32 are for message passing routines,
-c     timers 33:80 are for general hycom routines,
-c     timers 81:96 are for user selected routines.
-c     timer     97 is the total time.
-c
-c  3) call xctmri    to initialize timers (called in xcspmd),
-c     call xctmr0(n) to start timer n,
-c     call xctmr1(n) to stop  timer n and add event to timer sum,
-c     call xctnrn(n,cname) to register a name for timer n,
-c     call xctmrp to printout timer statistics (called by xcstop).
-c
-c  4) time every 50-th event above 5,000.
-c*
-c**********
-c
+!
+!**********
+!*
+!  1) initialize timers.
+!
+!  2) timers  1:32 are for message passing routines,
+!     timers 33:80 are for general hycom routines,
+!     timers 81:96 are for user selected routines.
+!     timer     97 is the total time.
+!
+!  3) call xctmri    to initialize timers (called in xcspmd),
+!     call xctmr0(n) to start timer n,
+!     call xctmr1(n) to stop  timer n and add event to timer sum,
+!     call xctnrn(n,cname) to register a name for timer n,
+!     call xctmrp to printout timer statistics (called by xcstop).
+!
+!  4) time every 50-th event above 5,000.
+!*
+!**********
+!
       integer i
 !
       real*8     zero8

@@ -69,7 +69,7 @@
          module procedure xcsumr_0  ! rank 0 array (i.e. scalar)
          module procedure xcsumr_1  ! rank 1 array
       end interface
-#if defined(USE_ESMF4) || defined(ESPC_COUPLE)
+#if defined(USE_ESMF4) || defined(ESPC_COUPLE) ||defined(NERSC_USE_ESMF)
 !
 ! --- public data structures for ESMF, see xcspmd
       integer, public,  save :: deBlockList(2,2,iqr*jqr)

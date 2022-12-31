@@ -14,12 +14,18 @@
       module mod_stokes
       use mod_xc  ! HYCOM communication interface
       use mod_cb_arrays  ! HYCOM saved arrays
+#if defined(NERSC_stokes)
+      use m_get_erfc
+#endif
 !
       implicit none
 !
 ! --- HYCOM Stokes Drift from external data files
 !
       logical, parameter, private :: debug_stokes=.false.  !usually .false.
+#if defined(NERSC_stokes)
+      logical, parameter, private :: debug_stokesPhl=.false.  !usually .false.
+#endif
 !
 !     Logical flags for Stokes Drift Effects
 !     The modification of the turbulent viscosity near the surface 
@@ -31,14 +37,18 @@
        stdflg,    & ! Stokes Drift Velocities:           TRUE/FALSE
        stdsur,    & ! Stokes Drift Surface Stresses:     TRUE/FALSE (dissipation due to breaking and rolling)
        stdbot,    & ! Stokes Drift Bottom Stress:        TRUE/FALSE (dissipation due to bottom friction)
-       stdarc    ! Stokes Drift Velocities in Archive TRUE/FALSE
+#if defined(NERSC_stokes)
+       stdtau,    & ! Removing from the total wind stress the part transfered to the wave field subjected to dissipation: TRUE/FALSE
+       stdwom,    & ! Adding the wave-to-ocean momentum flux due to wave dissipation/breaking: TRUE/FALSE 
+#endif
+       stdarc       ! Stokes Drift Velocities in Archive TRUE/FALSE
 !
 !    Constant values
 !     Number of fixed interface depths for Stokes input
 !
       integer,   save, public   :: &
         nsdzi,    & ! Number of fixed interface depths for Stokes input 
-       langmr    ! Langmuir turb enhancement (KPP) 0: None 1:McWilliams-Sulliva 2:Smyth 3:McWilliams-Harcourt 4:Takaya
+        langmr    ! Langmuir turb enhancement (KPP) 0: None 1:McWilliams-Sulliva 2:Smyth 3:McWilliams-Harcourt 4:Takaya
 
 !     Arrays holding Surface Stokes Velocities
 
@@ -105,10 +115,18 @@
 
       real,    allocatable, dimension(:,:,:), &
                save, public  :: &
-       wave_bdx(:,:,:),      & ! Bottom dissipation  
-       wave_bdy(:,:,:),      & ! Bottom dissipation  
-       wave_brkx(:,:,:),      & ! Dissipation  by breaking
-       wave_brky(:,:,:)      ! Dissipation  by breaking
+       wave_bdx(:,:,:),         & ! Bottom dissipation  
+       wave_bdy(:,:,:),         & ! Bottom dissipation  
+       wave_brkx(:,:,:),        & ! Dissipation  by breaking
+       wave_brky(:,:,:)           ! Dissipation  by breakin
+#if defined(NERSC_stokes)
+!     Arrays used to calculate transport
+
+      real,    allocatable, dimension(:,:,:),
+           save, private  :: &
+        tusd,       & ! Stokes transport u direction, p-grid
+        tvsd       ! Stokes transport v direction, p-grid
+#endif
 
 !     Arrays used for the parameterization of the vertical mixing
 
@@ -183,6 +201,15 @@
       usds(:,:) = 0.0
       vsds(:,:) = 0.0
 
+#if defined(NERSC_stokes)
+!     Arrar for transport
+       allocate( tusd(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,2), &
+                 tvsd(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,2))
+       call mem_stat_add( 2*(idm+2*nbdy)*(jdm+2*nbdy)*2 )
+       tusd(:,:,:) = 0.0
+       tvsd(:,:,:) = 0.0
+!
+#endif
 !      allocate( dzdx(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,kdm),
 !     &          dzdy(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,kdm))
 !      call mem_stat_add( 2*(idm+2*nbdy)*(jdm+2*nbdy)*kdm )
@@ -704,6 +731,7 @@
       enddo !i
       return
       end subroutine stokes_vertical_j
+#if defined(NERSC_stokes)
 !     ><<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<
 !   !  Construct stokes profile using Phillips approx.,
 !      Breivik et al., 2016. 
@@ -879,6 +907,7 @@
            *get_erfc(sqrt(-2*knmp*zlvlp)))
 !     print *,'z, phill_prof =',zlvlp,phillips_profile     
       END FUNCTION phillips_profile
+#endif
 !
 !      
       end module mod_stokes

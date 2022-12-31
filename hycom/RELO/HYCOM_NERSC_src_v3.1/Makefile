@@ -7,20 +7,27 @@
 #
 
 .SUFFIXES: 
-.SUFFIXES: .c .F90 .o
+.SUFFIXES: .c .F90 .f90 .o
 
 .F90:
+	@echo "Must have an explicit rule for" $*
+.f90:
 	@echo "Must have an explicit rule for" $*
 .c:
 	@echo "Must have an explicit rule for" $*
 
-include config/$(ARCH)_$(TYPE)
+include ../config/$(ARCH)_$(TYPE)
+include ./hycom_feature_flags
+CPPFLAGS:=$(CPPFLAGS) $(HYCOM_FEATURE_FLAGS)
 
 MODS =   mod_dimensions.o mod_xc.o mod_za.o mod_cb_arrays.o mod_pipe.o \
          mod_incupd.o \
          mod_floats.o m_get_erfc.o mod_stokes.o mod_tides.o mod_mean.o mod_archiv.o \
          mod_tsadvc.o mod_momtum.o mod_barotp.o mod_asselin.o mod_restart.o\
-         mod_hycom.o mod_esmf_utils.o mod_netcdf_util.o mod_prgrad.o mod_NERSCnml.o
+         mod_hycom.o mod_esmf_utils.o mod_netcdf_util.o mod_NERSCnml.o
+# ----------------------------------------------------
+# Mostafa added this in order to use standalone hycom
+# ----------------------------------------------------
 
 MODD =   mod_dimensions.o mod_xc.o mod_za.o mod_cb_arrays.o mod_pipe.o \
          mod_incupd.o \
@@ -76,7 +83,7 @@ dummy_cice:	$(MODS) $(OBJS) mod_OICPL.o dummy_cice.o
 	$(LD)  $(LDFLAGS) -o dummy_cice \
                              dummy_cice.o mod_OICPL.o \
                              $(MODD) $(OBJS) \
-                             ${CICE_DIR}/esmf/compile/*.o \
+                             ${CICE_DIR}/rundir/compile/*.o \
                              $(EXTRALIBS)
 
 hycom.o:        hycom.F90       mod_hycom.o
@@ -116,7 +123,7 @@ mxkrtm.o:  mxkrtm.F90  mod_xc.o mod_cb_arrays.o stmt_fns.h
 mxpwp.o:   mxpwp.F90   mod_xc.o mod_cb_arrays.o stmt_fns.h
 overtn.o:  overtn.F90  mod_xc.o mod_cb_arrays.o
 poflat.o:  poflat.F90
-prtmsk.o:  prtmsk.F90
+prtmsk.o:  prtmsk.f90
 psmoo.o:   psmoo.F90   mod_xc.o 
 s8gefs.o:  s8gefs.F90
 thermf.o:  thermf.F90  mod_xc.o mod_cb_arrays.o stmt_fns.h
@@ -185,10 +192,7 @@ mod_NERSCnml.o: mod_NERSCnml.F90
 
 
 mod_netcdf_util.o: \
-	mod_netcdf_util.F mod_xc.o mod_cb_arrays.o  
-
-mod_prgrad.o: \
-	mod_prgrad.F
+	mod_netcdf_util.F90 mod_xc.o mod_cb_arrays.o  
 
 # CAGLAR - ADDED FABM SUPPORT -
 ifneq (,$(findstring -D_FABM_,$(CPPFLAGS)))

@@ -55,8 +55,8 @@
          ubaro_m,vbaro_m,kebaro_m, &
          montg_m,srfht_m,steric_m,dpbl_m,dpmixl_m, &
          surflx_m,salflx_m,wtrflx_m, covice_m,thkice_m,temice_m, &
-         oneta_m,oneta_u,oneta_v
-#if defined(NERSC_HYCOM_CICE) &
+         oneta_m,oneta_u,oneta_v &
+#if defined(NERSC_HYCOM_CICE) 
          ,si_u_m, si_v_m
 #if defined(OFFICEField)
       logical, save, private :: Toffice=.true.  
@@ -356,7 +356,7 @@
             thkice_m(i,j) = thkice_m(i,j) * q
             temice_m(i,j) = temice_m(i,j) * q
                  p(i,j,1) = 0.0
-#if defined(NERSC  _HYCOM_CICE)
+#if defined(NERSC_HYCOM_CICE)
             si_u_m  (i,j) = si_u_m  (i,j) * q
             si_v_m  (i,j) = si_v_m  (i,j) * q
 #endif
@@ -903,12 +903,12 @@
                  (p(itest,jtest,k+1)+p(itest,jtest,k))*0.5*qonem,     & !m
              0.0,  & !vcty(itest,jtest,k+1)*1.e4,                       !cm**2/s
              0.0,  & !dift(itest,jtest,k+1)*1.e4,                       !cm**2/s
-             0.0,  & !difs(itest,jtest,k+1)*1.e4,                       !cm**2/s
+             0.0   & !difs(itest,jtest,k+1)*1.e4,                       !cm**2/s
 #if defined(STOKES)
-             max(-999.99,min(999.99,ustk*100.0)),                     & !cm/s
-             max(-999.99,min(999.99,vstk*100.0)),                     !cm/s
+             ,max(-999.99,min(999.99,ustk*100.0)),                     & !cm/s
+             max(-999.99,min(999.99,vstk*100.0))                      & !cm/s
 #endif
-#ifndef _FABM_ &
+#ifndef _FABM_
              ,(tracer_m(itest,jtest,k,ktr),ktr=1,ntracr)              !0-999?
 #endif
         enddo !k
