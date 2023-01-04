@@ -76,7 +76,7 @@ hycom_cice_nersc:     $(MODS) $(OBJS) mod_OICPL.o hycom_cice_nersc.o
 	$(LD)  $(LDFLAGS) -o hycom_cice_nersc \
                              hycom_cice_nersc.o mod_OICPL.o \
                              $(MODS) $(OBJS) \
-                             ${CICE_DIR}/esmf/compile/*.o \
+                             ${CICE_DIR}/rundir/compile/*.o \
                              $(EXTRALIBS)
 
 dummy_cice:	$(MODS) $(OBJS) mod_OICPL.o dummy_cice.o
@@ -88,7 +88,7 @@ dummy_cice:	$(MODS) $(OBJS) mod_OICPL.o dummy_cice.o
 
 hycom.o:        hycom.F90       mod_hycom.o
 hycom_cice.o:   hycom_cice.F90  mod_hycom.o       mod_OICPL.o
-hycom_cice_nersc.o: hycom_cice_nersc.F90 mod_hycom.0 mod_OICPL.o
+hycom_cice_nersc.o: hycom_cice_nersc.F90 mod_hycom.o mod_OICPL.o
 dummy_cice.o:   dummy_cice.F90  mod_hycom_dummy.o mod_OICPL.o
 
 bigrid.o:  bigrid.F90  mod_xc.o 

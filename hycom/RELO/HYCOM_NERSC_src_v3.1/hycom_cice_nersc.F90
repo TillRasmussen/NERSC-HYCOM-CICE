@@ -17,12 +17,12 @@
 
       use CICE_comp_esmf, only : &
             ICE_SetServices => CICE_SetServices
-      use CICE_InitMod, only : &
-            ICE_nts_day     => nts_day
-      use CICE_RunMod, only : &
-            ICE_put_export  => put_export, &
-            ICE_get_import  => get_import, &
-            ICE_end_of_run  => end_of_run
+!      use CICE_InitMod, only : &
+!            ICE_nts_day     => nts_day
+!      use CICE_RunMod, only : &
+!            ICE_put_export  => put_export, &
+!            ICE_get_import  => get_import, &
+!            ICE_end_of_run  => end_of_run
       use mod_OICPL, only : &
             CPL_i2o         => ice2ocn_phase, &
             CPL_o2i         => ocn2ice_phase, &
@@ -169,9 +169,9 @@
           msg="OICPL: Add SEAICE impState failed", rcToReturn=rc2)) &
          goto 10
 
-      CALL ESMF_StateAdd(cplExpState, ocnExpState, rc=rc)
-      if (ESMF_LogMsgFoundError(rc, &
-          "OICPL: Add OCEAN  expState failed", rcToReturn=rc2)) &
+      CALL ESMF_StateAdd(cplExpState, (/ocnExpState/), rc=rc)
+      if (ESMF_LogFoundError(rc, &
+          msg="OICPL: Add OCEAN  expState failed", rcToReturn=rc2)) &
          goto 10
 !
       CALL ESMF_StateAdd(cplExpState, (/iceExpState/), rc=rc)
@@ -207,7 +207,7 @@
 !-------------------------------------------------------------------------------
 ! --- Initalize Section
 !------------------------------------ -------------------------------------------
-#if defined (NERSC_USE_ESMF)
+!!#if defined (NERSC_USE_ESMF)
 ! not sure if the clock is needed/ Till
 ! --- Init clocks with dummy values
       call ESMF_TimeSet(startTime,yy=1901,mm=1,dd=1,h=0,s=0,rc=rc)
@@ -216,7 +216,7 @@
          startTime=startTime, timeStep=timeStep,  rc=rc)
       iceClock = ESMF_ClockCreate(name="CICE Clock", &
          startTime=startTime, timeStep=timeStep,  rc=rc)
-#endif
+!!#endif
 !
 ! --- Initialize OCEAN  gridded component
       call ESMF_GridCompInitialize(ocnGridComp, &
@@ -230,7 +230,7 @@
           msg="OCEAN Initialize failed", rcToReturn=rc2)) &
          goto 10
 !
-#if defined(NERSC_USE_ESMF)
+!!#if defined(NERSC_USE_ESMF)
 ! --- Get HYCOM ice flag. 
       call ESMF_AttributeGet(ocnGridComp, name="OCN_iceflg", &
          value=OCN_iceflg, rc=rc)
@@ -254,7 +254,7 @@
 !
 ! --- HYCOM determines the clock - here we copy HYCOMS ocnClock to CICEs iceClock
       iceClock = ESMF_ClockCreate(ocnClock)
-#endif
+!!#endif
 !
 ! --- Initialize SEAICE gridded component
       call ESMF_GridCompInitialize(    gridComp=iceGridComp, &
@@ -567,4 +567,4 @@
       call ESMF_Finalize(rc=rc)
 !
       stop
-      end program hycom_cice
+      end program hycom_cice_nersc

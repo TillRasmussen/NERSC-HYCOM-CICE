@@ -2817,7 +2817,7 @@
       logical  :: put_export
       logical  :: end_of_run 
 !KAL  
-      character*80, external :: restart_name
+!      character*80, external :: restart_name
 !KAL  
 !
 # include "stmt_fns.h"
