@@ -81,6 +81,8 @@
 !
 ! --- Set default calendar and log type; get world VM
       rc = ESMF_Success
+!!! THE ESMF_LOG IS SET TO OUTPUT ALL LOG MESSAGES. THIS MAY CAUSE SLOWDOWN IN PERFORMANCE ESMF_LOGKIND_Multi_On_Error  !!!
+
       call ESMF_Initialize(defaultCalKind=ESMF_CALKIND_GREGORIAN, &
                             logkindflag=ESMF_LOGKIND_MULTI, &
                                         vm=worldVM, &
@@ -207,7 +209,6 @@
 !-------------------------------------------------------------------------------
 ! --- Initalize Section
 !------------------------------------ -------------------------------------------
-!!#if defined (NERSC_USE_ESMF)
 ! not sure if the clock is needed/ Till
 ! --- Init clocks with dummy values
       call ESMF_TimeSet(startTime,yy=1901,mm=1,dd=1,h=0,s=0,rc=rc)
@@ -216,7 +217,6 @@
          startTime=startTime, timeStep=timeStep,  rc=rc)
       iceClock = ESMF_ClockCreate(name="CICE Clock", &
          startTime=startTime, timeStep=timeStep,  rc=rc)
-!!#endif
 !
 ! --- Initialize OCEAN  gridded component
       call ESMF_GridCompInitialize(ocnGridComp, &
@@ -230,7 +230,6 @@
           msg="OCEAN Initialize failed", rcToReturn=rc2)) &
          goto 10
 !
-!!#if defined(NERSC_USE_ESMF)
 ! --- Get HYCOM ice flag. 
       call ESMF_AttributeGet(ocnGridComp, name="OCN_iceflg", &
          value=OCN_iceflg, rc=rc)
@@ -254,7 +253,6 @@
 !
 ! --- HYCOM determines the clock - here we copy HYCOMS ocnClock to CICEs iceClock
       iceClock = ESMF_ClockCreate(ocnClock)
-!!#endif
 !
 ! --- Initialize SEAICE gridded component
       call ESMF_GridCompInitialize(    gridComp=iceGridComp, &

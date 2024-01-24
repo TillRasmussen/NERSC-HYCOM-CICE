@@ -48,7 +48,7 @@
 !
       integer,   save, public   :: &
         nsdzi,    & ! Number of fixed interface depths for Stokes input 
-        langmr    ! Langmuir turb enhancement (KPP) 0: None 1:McWilliams-Sulliva 2:Smyth 3:McWilliams-Harcourt 4:Takaya
+        langmr      ! Langmuir turb enhancement (KPP) 0: None 1:McWilliams-Sulliva 2:Smyth 3:McWilliams-Harcourt 4:Takaya
 
 !     Arrays holding Surface Stokes Velocities
 
@@ -118,7 +118,7 @@
        wave_bdx(:,:,:),         & ! Bottom dissipation  
        wave_bdy(:,:,:),         & ! Bottom dissipation  
        wave_brkx(:,:,:),        & ! Dissipation  by breaking
-       wave_brky(:,:,:)           ! Dissipation  by breakin
+       wave_brky(:,:,:)           ! Dissipation  by breaking
 #if defined(NERSC_stokes)
 !     Arrays used to calculate transport
 
@@ -465,11 +465,10 @@
           enddo !k
           rewind(unit=uoff+928)
           read (uoff+928,'(a79)') preambl
-!$2DIM           do k=1,nsdzi
-!$2DIM             read (uoff+928,'(a)') cliney
-!$2DIM           enddo !k
+          do k=1,nsdzi
+            read (uoff+928,'(a)') cliney
+          enddo !k
         endif
-!
         do iunit= 927,928
           do i= 1,nrec-2
             do k=1,nsdzi

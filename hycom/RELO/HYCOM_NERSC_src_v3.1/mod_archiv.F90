@@ -19,20 +19,11 @@
       logical,       save, private :: &
          fpnts         ! initialize profile location files
 !
-#if ! defined(NERSC_HYCOM_CICE)
-      integer, parameter, private :: nfields=19  !no. fields in surface archive
-#else
-      integer, parameter, private :: nfields=21  !Adds si_u, si_v
-#endif
+      integer, parameter, private :: nfields=20  !no. fields in surface archive
       character*6, save,  private :: c_arch(nfields) !field names
       logical,     save,  private :: l_arch(nfields) !field output flags
 !
       private archiv_prof_out
-#ifdef OFFICEField
-      ! Shielding the output of ice fields
-      logical, save, private :: Toffice=.true. 
-#endif
-
 
       contains
 
@@ -58,10 +49,7 @@
         call xcsync(flush_lp)
 !
         l_arch( 1:17) = .true.
-        l_arch(18:20) = .false.  !surtx,surty must be explicitly selected
-#if defined(NERSC_HYCOM_CICE)
-        l_arch(21:22) = .false.  !si_u,si_v must be explicitly selected
-#endif
+        l_arch(18:20) = .false.  !salflx,surtx,surty must be explicitly selected
         return
       endif
 !
@@ -87,10 +75,6 @@
       c_arch(18) = 'salflx'  !optional fields output after wtrflx
       c_arch(19) = 'surtx '
       c_arch(20) = 'surty '
-#if defined(NERSC_HYCOM_CICE)
-      c_arch(21) = 'si_u  '
-      c_arch(22) = 'si_v  '
-#endif
 !
 ! --- read in archs.input.
 !
@@ -121,6 +105,7 @@
 !
 ! --- write an archive file.
 !
+      character*8  ctype
       character*80 cformat,flnmarcvs
       integer      i,j,k,ktr,ldot,nop,nopa
       real         coord,xmin,xmax
@@ -178,7 +163,6 @@
 #if defined(NERSC_HYCOM_CICE) && defined(NETCDF_ARCHV)
       call write_nc_archv(flnmarcvs(1:ldot)//".nc",kkout,n)
 #endif /* defined(NERSC_HYCOM_CICE) && defined(NETCDF_ARCHV)*/
-!
 ! --- surface fields
 !
 ! --- identify the equation of state (sigver,thbase) on the first record
@@ -296,11 +280,7 @@
       call flush(nop)
       endif !1st tile
       endif !l_arch
-#ifdef OFFICEField
-      if     (iceflg.ne.0 .and. Toffice==.false.) then
-#else
       if     (iceflg.ne.0) then
-#endif
         if     (kkout.gt.1 .or. l_arch(8)) then
         call zaiowr(covice,ip,.true., xmin,xmax, nopa, .false.)
         if     (mnproc.eq.1) then
@@ -439,7 +419,7 @@
 ! --- no tracers or diffusion for single layer case
 !
       if     (kkout.gt.1) then
-        do ktr= 1,ntracr
+        do ktr= 1,ntracr+mtracr
           call zaiowr(tracer(1-nbdy,1-nbdy,k,n,ktr),ip,.true., &
                       xmin,xmax, nopa, .false.)
           if     (mnproc.eq.1) then
@@ -447,7 +427,13 @@
           write (nop,117) fabm_model%state_variables(ktr)%name(1:8), &
             nstep,time,k,coord,xmin,xmax
 #else
-          write (nop,117) 'tracer  ',nstep,time,k,coord,xmin,xmax
+          if     (ktr.le.99) then
+! ---       older postprocessing code will not recognise this
+            write(ctype,'(a6,i2.2)') 'tracer',ktr
+          else
+            ctype = 'tracer  '
+          endif
+          write (nop,117) ctype,nstep,time,k,coord,xmin,xmax
 #endif
           call flush(nop)
           endif !1st tile
@@ -457,13 +443,27 @@
           call zaiowr(usdp(1-nbdy,1-nbdy,k),ip,.true., &
                       xmin,xmax, nopa, .false.)
           if     (mnproc.eq.1) then
-          write (nop,117) 'tracer  ',nstep,time,k,coord,xmin,xmax
+          ktr = ntracr+mtracr + 1
+          if     (ktr.le.99) then
+! ---       older postprocessing code will not recognise this
+            write(ctype,'(a6,i2.2)') 'tracer',ktr
+          else
+            ctype = 'tracer  '
+          endif
+          write (nop,117) ctype,nstep,time,k,coord,xmin,xmax
           call flush(nop)
           endif !1st tile
           call zaiowr(vsdp(1-nbdy,1-nbdy,k),ip,.true., &
                       xmin,xmax, nopa, .false.)
           if     (mnproc.eq.1) then
-          write (nop,117) 'tracer  ',nstep,time,k,coord,xmin,xmax
+          ktr = ntracr+mtracr + 2
+          if     (ktr.le.99) then
+! ---       older postprocessing code will not recognise this
+            write(ctype,'(a6,i2.2)') 'tracer',ktr
+          else
+            ctype = 'tracer  '
+          endif
+          write (nop,117) ctype,nstep,time,k,coord,xmin,xmax
           call flush(nop)
           endif !1st tile
         endif !stdarc
@@ -508,34 +508,6 @@
         enddo
       endif !diaflx
 !
-#if defined(NERSC_HYCOM_CICE)
-! --- Placed here not to interfere with reading of nest files etc etc
-#ifdef OFFICEField
-      if     (iceflg.ne.0 .and. Toffice==.false.) then
-#else
-      if     (iceflg.ne.0) then
-#endif
-        if     (kkout.gt.1 .or. l_arch(20)) then
-        call zaiowr(si_u,ip,.true., xmin,xmax, nopa, .false.)
-        if     (mnproc.eq.1) then
-        write (nop,117) 'si_u    ',nstep,time,0,0.0,xmin,xmax
-        k    =0
-        coord=0.0
-        call flush(nop)
-        endif !1st tile
-        endif !l_arch
-        if     (kkout.gt.1 .or. l_arch(21)) then
-        call zaiowr(si_v,ip,.true., xmin,xmax, nopa, .false.)
-        if     (mnproc.eq.1) then
-        write (nop,117) 'si_v    ',nstep,time,0,0.0,xmin,xmax
-        k    =0
-        coord=0.0
-        call flush(nop)
-        endif !1st tile
-        endif !l_arch
-      endif
-! --- Placed here not to interfere with reading of nest files etc etc
-#endif
       close (unit=nop)
       call zaiocl(nopa)
 !
@@ -849,7 +821,8 @@
           mixflx(ipnt,jpnt),                                    & !W/m**2
           sstflx(ipnt,jpnt),                                    & !W/m**2
           wtrflx(ipnt,jpnt)*svref*8.64E7,                       & !mm/day
-          sssflx(ipnt,jpnt)*svref*8.64E7/saln(ipnt,jpnt,1,n),   & !mm/day
+          sssflx(ipnt,jpnt)*svref*8.64E7/ &
+                            max(0.1,saln(ipnt,jpnt,1,n)),       & !mm/day
           rivflx(ipnt,jpnt)*svref*8.64E7,                       & !mm/day
           bhtflx(ipnt,jpnt)*1.e6,                          & !1.e6*m**2/sec**3
           buoflx(ipnt,jpnt)*1.e6,                          & !1.e6*m**2/sec**3
@@ -900,7 +873,8 @@
           mixflx(ipnt,jpnt),                                    & !W/m**2
           sstflx(ipnt,jpnt),                                    & !W/m**2
           wtrflx(ipnt,jpnt)*svref*8.64E7,                       & !mm/day
-          sssflx(ipnt,jpnt)*svref*8.64E7/saln(ipnt,jpnt,1,n),   & !mm/day
+          sssflx(ipnt,jpnt)*svref*8.64E7/ &
+                            max(0.1,saln(ipnt,jpnt,1,n)),       & !mm/day
           rivflx(ipnt,jpnt)*svref*8.64E7,                       & !mm/day
           bhtflx(ipnt,jpnt)*1.e6,                          & !1.e6*m**2/sec**3
           buoflx(ipnt,jpnt)*1.e6,                          & !1.e6*m**2/sec**3
@@ -923,11 +897,7 @@
           sssa,                                                 & !m.psu
           sums                                                 !m.psu
 !
-#ifdef OFFICEField
-        if     (iceflg.ne.0 .and. Toffice==.false.) then
-#else
         if     (iceflg.ne.0) then
-#endif
           if     (.not.icegln) then
             wflfrz(ipnt,jpnt) = wflice(ipnt,jpnt)
           endif
@@ -949,41 +919,41 @@
             wflfrz(ipnt,jpnt)*svref*8.64E7                       !mm/day
         endif !iceflg
 #if defined(STOKES)
-        if     (ntracr.eq.0) then
+        if     (ntracr+mtracr.eq.0) then
           write(cformat,'(a)')      '(4a)'
         else
-          write(cformat,'(a,i2,a)') '(4a,', ntracr, 'a)'
+          write(cformat,'(a,i2,a)') '(4a,', ntracr+mtracr, 'a)'
         endif
         write (nop,cformat) &
             '#  k', &
             '    utot    vtot  p.temp    saln  p.dens', &
             '    thkns      dpth  viscty  t-diff  s-diff', &
             '  usdtot  vsdtot', &
-            ('  tracer',ktr=1,ntracr)
-        if     (ntracr.eq.0) then
+            ('  tracer',ktr=1,ntracr+mtracr)
+        if     (ntracr+mtracr.eq.0) then
           write(cformat,'(a)') &
             '(i4,2f8.2,3f8.4,f9.3,f10.3,3f8.2,2f8.2)'
         else
           write(cformat,'(a,i2,a)') &
-            '(i4,2f8.2,3f8.4,f9.3,f10.3,3f8.2,2f8.2,', ntracr, 'f8.3)'
+            '(i4,2f8.2,3f8.4,f9.3,f10.3,3f8.2,2f8.2,', ntracr+mtracr, 'f8.3)'
         endif
 #else
-        if     (ntracr.eq.0) then
+        if     (ntracr+mtracr.eq.0) then
           write(cformat,'(a)')      '(3a)'
         else
-          write(cformat,'(a,i2,a)') '(3a,', ntracr, 'a)'
+          write(cformat,'(a,i2,a)') '(3a,', ntracr+mtracr, 'a)'
         endif
         write (nop,cformat) &
             '#  k', &
             '    utot    vtot  p.temp    saln  p.dens', &
             '    thkns      dpth  viscty  t-diff  s-diff', &
-            ('  tracer',ktr=1,ntracr)
-        if     (ntracr.eq.0) then
+            ('  tracer',ktr=1,ntracr+mtracr)
+        if     (ntracr+mtracr.eq.0) then
           write(cformat,'(a)') &
             '(i4,2f8.2,3f8.4,f9.3,f10.3,3f8.2)'
         else
           write(cformat,'(a,i2,a)') &
-            '(i4,2f8.2,3f8.4,f9.3,f10.3,3f8.2,', ntracr, 'f8.3)'
+            '(i4,2f8.2,3f8.4,f9.3,f10.3,3f8.2,', ntracr+mtracr, 'f8.3)'
         endif
 #endif
         do k= 1,kk
@@ -1014,7 +984,7 @@
              max(-999.99,min(999.99,ustk*100.0)),                   & !cm/s
              max(-999.99,min(999.99,vstk*100.0)),                   & !cm/s
 #endif
-             (tracer(ipnt,jpnt,k,n,ktr),ktr=1,ntracr)                 !0-999?
+             (tracer(ipnt,jpnt,k,n,ktr),ktr=1,ntracr+mtracr)          !0-999?
         enddo !k
       else
         write (lp,*) 'archiv_prof_out called on wrong tile'
@@ -1042,6 +1012,7 @@
 !
 ! --- write a partial archive file on a tile by tile basis.
 !
+      character*8  ctype
       character*12 cdir
       character*80 cformat
       logical      lexist
@@ -1132,11 +1103,7 @@
                   xmin,xmax, nopa, .false.)
       write (nop,117) 'mix_dpth',nstep,time,0,coord,xmin,xmax
       call flush(nop)
-#ifdef OFFICEField
-      if     (iceflg.ne.0 .and. Toffice==.false.) then
-#else
       if     (iceflg.ne.0) then
-#endif
         call ztiowr(covice,ip,.true., xmin,xmax, nopa, .false.)
         write (nop,117) 'covice  ',nstep,time,0,coord,xmin,xmax
         call flush(nop)
@@ -1150,14 +1117,6 @@
         call ztiowr(temice,ip,.true., xmin,xmax, nopa, .false.)
         write (nop,117) 'temice  ',nstep,time,0,coord,xmin,xmax
         call flush(nop)
-#if defined(NERSC_HYCOM_CICE)
-        call ztiowr(si_u,ip,.true., xmin,xmax, nopa, .false.)
-        write (nop,117) 'si_u    ',nstep,time,0,coord,xmin,xmax
-        call flush(nop)
-        call ztiowr(si_v,ip,.true., xmin,xmax, nopa, .false.)
-        write (nop,117) 'si_v    ',nstep,time,0,coord,xmin,xmax
-        call flush(nop)
-#endif
       endif  !write ice fields
 !
 ! --- depth averaged fields
@@ -1195,14 +1154,20 @@
                   xmin,xmax, nopa, .false.)
       write (nop,117) 'salin   ',nstep,time,k,coord,xmin,xmax
       call flush(nop)
-      do ktr= 1,ntracr
+      do ktr= 1,ntracr+mtracr
         call ztiowr(tracer(1-nbdy,1-nbdy,k,n,ktr),ip,.true., &
                     xmin,xmax, nopa, .false.)
 #ifdef _FABM_
        write (nop,117) fabm_model%state_variables(ktr)%name(1:8), &
             nstep,time,k,coord,xmin,xmax
 #else
-        write (nop,117) 'tracer  ',nstep,time,k,coord,xmin,xmax
+        if     (ktr.le.99) then
+! ---     older postprocessing code will not recognise this
+          write(ctype,'(a6,i2.2)') 'tracer',ktr
+        else
+          ctype = 'tracer  '
+        endif
+        write (nop,117) ctype,nstep,time,k,coord,xmin,xmax
 #endif
         call flush(nop)
       enddo !ktr
@@ -1210,16 +1175,26 @@
       if     (stdarc) then
         call zaiowr(usdp(1-nbdy,1-nbdy,k),ip,.true., &
                     xmin,xmax, nopa, .false.)
-        if     (mnproc.eq.1) then
-        write (nop,117) 'tracer  ',nstep,time,k,coord,xmin,xmax
+        ktr = ntracr+mtracr+1
+        if     (ktr.le.99) then
+! ---     older postprocessing code will not recognise this
+          write(ctype,'(a6,i2.2)') 'tracer',ktr
+        else
+          ctype = 'tracer  '
+        endif
+        write (nop,117) ctype,nstep,time,k,coord,xmin,xmax
         call flush(nop)
-        endif !1st tile
         call zaiowr(vsdp(1-nbdy,1-nbdy,k),ip,.true., &
                     xmin,xmax, nopa, .false.)
-        if     (mnproc.eq.1) then
-        write (nop,117) 'tracer  ',nstep,time,k,coord,xmin,xmax
+        ktr = ntracr+mtracr+2
+        if     (ktr.le.99) then
+! ---     older postprocessing code will not recognise this
+          write(ctype,'(a6,i2.2)') 'tracer',ktr
+        else
+          ctype = 'tracer  '
+        endif
+        write (nop,117) ctype,nstep,time,k,coord,xmin,xmax
         call flush(nop)
-        endif !1st tile
       endif !stdarc
 #endif
       if     (difout) then
@@ -1710,3 +1685,5 @@
 !> Nov. 2018 - added oneta to 3-D archives
 !> Dec. 2018 - add archiv_exchange for NAVYESPC 
 !> Feb. 2019 - removed onetai 
+!> July 2023 - added mtracer for diagnostic tracers
+!> July 2023 - added a number 01-99 to tracer output

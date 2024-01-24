@@ -58,10 +58,6 @@
          oneta_m,oneta_u,oneta_v &
 #if defined(NERSC_HYCOM_CICE) 
          ,si_u_m, si_v_m
-#if defined(OFFICEField)
-      logical, save, private :: Toffice=.true.  
-      ! Shielding the output of ice fields
-#endif
 #endif
 
       contains
@@ -74,9 +70,9 @@
       call mem_stat_add( &
         hycom_fabm_allocate_mean_output(idm, jdm, kdm))
 #else
-      if     (ntracr.gt.0) then
-        allocate( tracer_m(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,kdm,ntracr) )
-        call mem_stat_add(       (idm+2*nbdy)*(jdm+2*nbdy)*kdm*ntracr )
+      if     (ntracr+mtracr.gt.0) then
+        allocate(tracer_m(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,kdm,ntracr+mtracr) )
+        call mem_stat_add((idm+2*nbdy)*(jdm+2*nbdy)*kdm*ntracr+mtracr )
       endif
 #endif
 !
@@ -174,7 +170,7 @@
                u_m(i,j,k) = 0.0
                v_m(i,j,k) = 0.0
 #ifndef _FABM_
-            do ktr= 1,ntracr
+            do ktr= 1,ntracr+mtracr
               tracer_m(i,j,k,ktr) = 0.0
             enddo !ktr
 #endif
@@ -283,7 +279,7 @@
               th3d_m(i,j,k) = th3d_m(i,j,k) +   th3d(i,j,k,n) * q
                 ke_m(i,j,k) =   ke_m(i,j,k) +     ke          * q
 #ifndef _FABM_
-              do ktr= 1,ntracr
+              do ktr= 1,ntracr+mtracr
                 tracer_m(i,j,k,ktr) = tracer_m(i,j,k,  ktr) + &
                                         tracer(i,j,k,n,ktr) * q
               enddo !ktr
@@ -379,7 +375,7 @@
                 th3d_m(i,j,k) = th3d_m(i,j,k) * qdp
                   ke_m(i,j,k) =   ke_m(i,j,k) * qdp
 #ifndef _FABM_
-                do ktr= 1,ntracr
+                do ktr= 1,ntracr+mtracr
                   tracer_m(i,j,k,ktr) = tracer_m(i,j,k,  ktr) * qdp
                 enddo !ktr
 #endif
@@ -395,7 +391,7 @@
                 th3d_m(i,j,k) = th3d_m(i,j,k-1)
                   ke_m(i,j,k) =   ke_m(i,j,k-1)
 #ifndef _FABM_
-                do ktr= 1,ntracr
+                do ktr= 1,ntracr+mtracr
                   tracer_m(i,j,k,ktr) = tracer_m(i,j,k-1,ktr)
                 enddo !ktr
 #endif
@@ -432,6 +428,9 @@
           enddo !i
         enddo !k
       enddo !j
+!
+      call xctilr(p(1-nbdy,1-nbdy,2),1,kk, 1,1, halo_ps)
+!
 #ifdef _FABM_
       call hycom_fabm_end_mean_output(q, dp_m(1:ii, 1:jj, 1:kk), dpthin)
 #endif
@@ -447,6 +446,7 @@
 !
 ! --- write a mean archive file.
 !
+      character*8  ctype
       character*80 cformat
       integer      i,j,k,ktr,ldot,nop,nopa
       integer      itst1,jtst1
@@ -588,11 +588,7 @@
       write (nop,117) 'kemix   ',nmean,time_ave,0,thbase,xmin,xmax
       call flush(nop)
       endif !1st tile
-#if defined(OFFICEField)
-      if     (iceflg.ne.0 .and. Toffice==.false.) then
-#else
       if     (iceflg.ne.0) then
-#endif
         call zaiowr(covice_m,ip,.true., xmin,xmax, nopa, .false.)
         if     (mnproc.eq.1) then
         write (nop,117) 'covice  ',nmean,time_ave,0,coord,xmin,xmax
@@ -678,11 +674,17 @@
       call flush(nop)
       endif !1st tile
 #ifndef _FABM_
-      do ktr= 1,ntracr
+      do ktr= 1,ntracr+mtracr
         call zaiowr(tracer_m(1-nbdy,1-nbdy,k,ktr),ip,.true., &
                     xmin,xmax, nopa, .false.)
         if     (mnproc.eq.1) then
-        write (nop,117) 'tracer  ',nmean,time_ave,k,coord,xmin,xmax
+        if     (ktr.le.99) then
+! ---     older postprocessing code will not recognise this
+          write(ctype,'(a6,i2.2)') 'tracer',ktr
+        else
+          ctype = 'tracer  '
+        endif
+        write (nop,117) ctype,nmean,time_ave,k,coord,xmin,xmax
         call flush(nop)
         endif !1st tile
       enddo !ktr
@@ -692,15 +694,27 @@
         call zaiowr(usdp_m(1-nbdy,1-nbdy,k),ip,.true., &
                     xmin,xmax, nopa, .false.)
         if     (mnproc.eq.1) then
-!$Alfatih     write (nop,117) 'tracer  ',nmean,time_ave,k,coord,xmin,xmax
-          write (nop,117) 'usdp_m  ',nmean,time_ave,k,coord,xmin,xmax
+        ktr = ntracr+mtracr + 1
+        if     (ktr.le.99) then
+! ---     older postprocessing code will not recognise this
+          write(ctype,'(a6,i2.2)') 'tracer',ktr
+        else
+          ctype = 'tracer  '
+        endif
+        write (nop,117) ctype,nmean,time_ave,k,coord,xmin,xmax
         call flush(nop)
         endif !1st tile
         call zaiowr(vsdp_m(1-nbdy,1-nbdy,k),ip,.true., &
                     xmin,xmax, nopa, .false.)
         if     (mnproc.eq.1) then
-!$Alfatih   write (nop,117) 'tracer  ',nmean,time_ave,k,coord,xmin,xmax
-        write (nop,117) 'vsdp_m  ',nmean,time_ave,k,coord,xmin,xmax           
+        ktr = ntracr+mtracr + 2
+        if     (ktr.le.99) then
+! ---     older postprocessing code will not recognise this
+          write(ctype,'(a6,i2.2)') 'tracer',ktr
+        else
+          ctype = 'tracer  '
+        endif
+        write (nop,117) ctype,nmean,time_ave,k,coord,xmin,xmax
         call flush(nop)
         endif !1st tile
       endif !stdarc
@@ -711,11 +725,7 @@
 #endif
 #if defined(NERSC_HYCOM_CICE)
 ! --- Moved here to not interfere with nesting etc
-#if defined(OFFICEField)
-      if     (iceflg.ne.0 .and. Toffice==.false.) then
-#else
       if     (iceflg.ne.0) then
-#endif
         call zaiowr(si_u_m,ip,.true., xmin,xmax, nopa, .false.)
         if     (mnproc.eq.1) then
         write (nop,117) 'si_u    ',nmean,time_ave,0,coord,xmin,xmax
@@ -826,11 +836,7 @@
           0.0,                                                      & !W/m**2
           0.0,                                                      & !W/m**2
           wtrflx_m(itest,jtest)*svref*8.64E7                       !mm/day
-#if defined(OFFICEField)
-        if     (iceflg.ne.0 .and. Toffice==.false.) then
-#else
         if     (iceflg.ne.0) then
-#endif
           write (nop,'(2a / a,f11.4, 3f8.2,2f8.1,f9.2)') &
           '## model-day', &
           '  covice  thkice  temice  flxice  fswice   iceE-P', &
@@ -843,41 +849,41 @@
             0.0   !sflice_m(itest,jtest)*svref*8.64E7/saln_m(itest,jtest,1) !mm/day
         endif !iceflg
 #if defined(STOKES)
-        if     (ntracr.eq.0) then
+        if     (ntracr+mtracr.eq.0) then
           write(cformat,'(a)')      '(4a)'
         else
-          write(cformat,'(a,i2,a)') '(4a,', ntracr, 'a)'
+          write(cformat,'(a,i2,a)') '(4a,', ntracr+mtracr, 'a)'
         endif
         write (nop,cformat) &
             '#  k', &
             '    utot    vtot  p.temp    saln  p.dens', &
             '    thkns      dpth  viscty  t-diff  s-diff', &
             '  usdtot  vsdtot', &
-            ('  tracer',ktr=1,ntracr)
-        if     (ntracr.eq.0) then
+            ('  tracer',ktr=1,ntracr+mtracr)
+        if     (ntracr+mtracr.eq.0) then
           write(cformat,'(a)') &
             '(i4,2f8.2,3f8.4,f9.3,f10.3,3f8.2,2f8.2)'
         else
           write(cformat,'(a,i2,a)') &
-            '(i4,2f8.2,3f8.4,f9.3,f10.3,3f8.2,2f8.2,', ntracr, 'f8.3)'
+            '(i4,2f8.2,3f8.4,f9.3,f10.3,3f8.2,2f8.2,', ntracr+mtracr, 'f8.3)'
         endif
 #else
-        if     (ntracr.eq.0) then
+        if     (ntracr+mtracr.eq.0) then
           write(cformat,'(a)')      '(3a)'
         else
-          write(cformat,'(a,i2,a)') '(3a,', ntracr, 'a)'
+          write(cformat,'(a,i2,a)') '(3a,', ntracr+mtracr, 'a)'
         endif
         write (nop,cformat) &
             '#  k', &
             '    utot    vtot  p.temp    saln  p.dens', &
             '    thkns      dpth  viscty  t-diff  s-diff', &
-            ('  tracer',ktr=1,ntracr)
-        if     (ntracr.eq.0) then
+            ('  tracer',ktr=1,ntracr+mtracr)
+        if     (ntracr+mtracr.eq.0) then
           write(cformat,'(a)') &
             '(i4,2f8.2,3f8.4,f9.3,f10.3,3f8.2)'
         else
           write(cformat,'(a,i2,a)') &
-            '(i4,2f8.2,3f8.4,f9.3,f10.3,3f8.2,', ntracr, 'f8.3)'
+            '(i4,2f8.2,3f8.4,f9.3,f10.3,3f8.2,', ntracr+mtracr, 'f8.3)'
         endif
 #endif
         do k= 1,kk
@@ -906,10 +912,10 @@
              0.0   & !difs(itest,jtest,k+1)*1.e4,                       !cm**2/s
 #if defined(STOKES)
              ,max(-999.99,min(999.99,ustk*100.0)),                     & !cm/s
-             max(-999.99,min(999.99,vstk*100.0))                      & !cm/s
+             max(-999.99,min(999.99,vstk*100.0))                     & !cm/s
 #endif
 #ifndef _FABM_
-             ,(tracer_m(itest,jtest,k,ktr),ktr=1,ntracr)              !0-999?
+             ,(tracer_m(itest,jtest,k,ktr),ktr=1,ntracr+mtracr)              !0-999?
 #endif
         enddo !k
         close (unit=nop)
@@ -1036,3 +1042,5 @@
 !> Nov  2018 - added wtrflx
 !> Nov  2018 - added oneta, use oneta*dp in place of dp
 !> Dec  2018 - archive dp_m/oneta_m
+!> July 2023 - added a number 01-99 to tracer output
+!> July 2023 - added mtracr for diagnostic tracers

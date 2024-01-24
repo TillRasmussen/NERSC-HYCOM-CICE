@@ -208,10 +208,8 @@
  9000 format(/ /10x,'error in zaiopn -  array I/O unit ', &
          i3,' is not marked as available.'/ /)
 #if defined(YMP) || defined(X1)
- 9050 format(/ /10x,'error in zaiopn -  can''t asnunit ',i3,
-!
-!**********
-     &   ', for array I/O.'/ /)
+ 9050 format(/ /10x,'error in zaiopn -  can''t asnunit ',i3, &
+         ', for array I/O.'/ /)
 #endif
  9100 format(/ /10x,'error in zaiopn -  can''t open unit ',i3, &
          ', for array I/O.'/ /)

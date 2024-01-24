@@ -1699,6 +1699,8 @@
         enddo !i
         enddo !j
 !
+      dpmx(:,:) = 2.*cutoff  !otherwise ii(jj)+1 to i(j)dm are NaN
+!
       do 9 k=1,kk
 !
 ! --- store total (barotropic plus baroclinic) flow at old and mid time in
@@ -2279,7 +2281,7 @@
         write (text,'(a9,i3)') 'pu     k=',k
         call pipe_compare_sym1(pu(1-nbdy,1-nbdy,k),iu,text)
         write (text,'(a9,i3)') 'depthu k=',k
-        call pipe_compare(depthu,iu,text)
+        call pipe_compare_sym1(depthu,iu,text)
         write (text,'(a9,i3)') 'util1  k=',k
         call pipe_compare_sym1(util1, iu,text)
         util4(1:ii,1:jj) = montg( 1:ii,1:jj,k,1)-montg( 0:ii-1,1:jj,k,1)
@@ -2709,9 +2711,9 @@
         write (text,'(a9,i3)') 'dzdy   k=',k
         call pipe_compare_sym1( dzdy(1-nbdy,1-nbdy,k),iu,text)
         write (text,'(a9,i3)') 'dvdzv  k=',k
-        call pipe_compare( dvdzv(1-nbdy,1-nbdy,k),iu,text)
+        call pipe_compare_sym1( dvdzv(1-nbdy,1-nbdy,k),iu,text)
         write (text,'(a9,i3)') 'dudzv  k=',k
-        call pipe_compare( dudzv(1-nbdy,1-nbdy,k),iu,text)
+        call pipe_compare_sym1( dudzv(1-nbdy,1-nbdy,k),iu,text)
 #endif            
       endif
 !
@@ -4052,6 +4054,8 @@
         enddo !i
       enddo !j
 !
+      dpmx(:,:) = 2.*cutoff  !otherwise ii(jj)+1 to i(j)dm are NaN
+!
       do 9 k=1,kk
 !
 ! --- store total (barotropic plus baroclinic) flow at old and mid time in
@@ -5327,7 +5331,7 @@
         write (text,'(a9,i3)') 'vflux  k=',k
         call pipe_compare_sym1(util4, iv,text)
         write (text,'(a9,i3)') 'v.n    k=',k
-        call pipe_compare(v(1-nbdy,1-nbdy,k,n),iv,text)
+        call pipe_compare_sym1(v(1-nbdy,1-nbdy,k,n),iv,text)
       endif
 !
 !diag if (k.eq.1) then

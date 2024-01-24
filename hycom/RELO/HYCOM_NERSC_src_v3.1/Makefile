@@ -7,18 +7,16 @@
 #
 
 .SUFFIXES: 
-.SUFFIXES: .c .F90 .f90 .o
+.SUFFIXES: .c .F90 .o
 
 .F90:
-	@echo "Must have an explicit rule for" $*
-.f90:
 	@echo "Must have an explicit rule for" $*
 .c:
 	@echo "Must have an explicit rule for" $*
 
 include ../config/$(ARCH)_$(TYPE)
 include ./hycom_feature_flags
-CPPFLAGS:=$(CPPFLAGS) $(HYCOM_FEATURE_FLAGS)
+CPPFLAGS:=$(CPPFLAGS) $(HYCOM_FEATURE_FLAGS) $(NERSC_FLAGS)
 
 MODS =   mod_dimensions.o mod_xc.o mod_za.o mod_cb_arrays.o mod_pipe.o \
          mod_incupd.o \
@@ -123,7 +121,7 @@ mxkrtm.o:  mxkrtm.F90  mod_xc.o mod_cb_arrays.o stmt_fns.h
 mxpwp.o:   mxpwp.F90   mod_xc.o mod_cb_arrays.o stmt_fns.h
 overtn.o:  overtn.F90  mod_xc.o mod_cb_arrays.o
 poflat.o:  poflat.F90
-prtmsk.o:  prtmsk.f90
+prtmsk.o:  prtmsk.F90
 psmoo.o:   psmoo.F90   mod_xc.o 
 s8gefs.o:  s8gefs.F90
 thermf.o:  thermf.F90  mod_xc.o mod_cb_arrays.o stmt_fns.h
@@ -187,6 +185,8 @@ mod_archiv.o: \
 mod_dimensions.o:   mod_dimensions.F90 dimensions.h
 mod_xc.o: mod_xc.F90  mod_dimensions.o mod_xc_sm.h mod_xc_mp.h
 mod_za.o: mod_za.F90  mod_xc.o         mod_za_sm.h mod_za_mp.h mod_za_mp1.h mod_za_zt.h
+
+mod_OICPL.o: mod_OICPL.F90
 
 mod_NERSCnml.o: mod_NERSCnml.F90
 

@@ -71,6 +71,8 @@ endif
 
 # --- KAL. Touch this file to make sure it exists. It may be empty, but the makefile will look for it
 touch ./hycom_feature_flags
+# setup cpp flags
+setenv NERSC_FLAG "-DNERSC_HYCOM_CICE -DNERSC_USE_ESMF -DNERSC_ATM_CPL -DNERSC_saltflux -DNERSC_T2F"
 #
 # --- make HYCOM component, and update hycom_cice
 #

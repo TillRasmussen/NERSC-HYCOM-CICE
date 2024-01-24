@@ -8,8 +8,11 @@
 ! --- module for restart and related routines
 !
       private !! default is private
+#ifdef NERSC_HYCOM_CICE
       public  :: restart_in, restart_out, restart_zero, restart_name
-
+#else
+      public  :: restart_in, restart_out, restart_zero
+#endif
 
       contains
 

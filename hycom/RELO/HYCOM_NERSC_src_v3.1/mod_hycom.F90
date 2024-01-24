@@ -863,7 +863,7 @@
 #else
 ! standard - only valid for linear freezing point
             t2f  = (spcifh*hfrz)/(baclin*icefrq*g)
-!           average both available time steps, to avoid time splitting.
+! ---       average both available time steps, to avoid time splitting.
             smxl = 0.5*(saln(i,j,1,n)+saln(i,j,1,m))
             tmxl = 0.5*(temp(i,j,1,n)+temp(i,j,1,m))
             tfrz = tfrz_0 + smxl*tfrz_s  !salinity dependent freezing point
@@ -908,7 +908,7 @@
                                          vbavg(i,j+1,2)  )
             util2(i,j)              = umxl
             util3(i,j)              = vmxl
-            expData(1)%p(i+i0,j+j0) = tmxl                           !in C
+            expData(1)%p(i+i0,j+j0) = tmxl
             expData(2)%p(i+i0,j+j0) = smxl
             expData(5)%p(i+i0,j+j0) = ssh2m*srfhgt(i,j)  !ssh in m
             expData(6)%p(i+i0,j+j0) = max(-1000.0,min(1000.0,ssfi))  !as in CICE
@@ -1661,6 +1661,14 @@
 !
 ! --- initialize hycom message passing.
       call xcspmd(mpiCommunicator)
+!
+#else if defined(CPL_OASIS_HYCOM)
+      if (present(localComm)) then
+         call xcspmd(mpiCommunicator)
+      else
+! --- initialize SPMD processsing
+         call xcspmd
+      endif         
 #else
 ! --- initialize hycom message passing.
       if (present(mpiCommunicator)) then
@@ -2024,6 +2032,11 @@
         call inigiss
       endif
 !
+      if     (mtracr.ne.0) then
+! ---   zero out diagnostic tracers
+        tracer(:,:,:,:,ntracr+1:ntracr+mtracr) = 0.0
+      endif !mtracr
+!
       if (linit) then
 !
 ! ---   set up initial conditions
@@ -2329,7 +2342,7 @@
           w2=0.0
           w3=0.0
 !!Alex no file flux on restart
-#if defined (DMI_CICE_COUPLED)
+#if defined (DMI_CICE_COUPLED) || defined(NERSC_HYCOM_CICE)
         call forfunh(dtime0)
         if (mnproc.eq.1) print*,'forfunh(dtime0) HYCOMCICE'
 #elif defined (USE_NUOPC_CESMBETA)
@@ -2790,7 +2803,7 @@
       type(ESMF_State)     :: expState
       type(ESMF_Clock)     :: extClock
       integer, intent(out) :: rc
-#else
+#else 
       subroutine HYCOM_Run  &
                  (endtime,pointer_filename,restart_write)
 !
@@ -2799,7 +2812,16 @@
       character*80, intent(in), optional :: pointer_filename
       logical,      intent(in), optional :: restart_write
 #endif
+#if defined (USE_NUOPC_CESMBETA)
+      real :: ssh_n,ssh_s,ssh_e,ssh_w,dhdx,dhdy
+      real :: maskn,masks,maske,maskw
+      real :: dp1,usur1,vsur1,psur1,dp2,usur2,vsur2,psur2,thksur, &
+              utot,vtot
+      real :: inv_cplifq
+      integer :: ld
+#endif
       logical :: restart_cpl
+!
 ! --- -------------------------
 ! --- execute a single timestep
 ! --- -------------------------
@@ -4078,7 +4100,7 @@
         call flush(nod)
         endif !1st tile
 !
-        do ktr= 1,ntracr
+        do ktr= 1,ntracr+mtracr
           dsumtr(ktr)=0.0d0
           do k=1,kk
 !$OMP       PARALLEL DO PRIVATE(j,i) &
@@ -4901,3 +4923,4 @@
 !> Feb. 2019 - replaced onetai by 1.0
 !> Sep. 2019 - added oneta0
 !> Nov. 2020 - removed call to MPI_Comm_Dup, duplicative of call in xcspmd
+!> July 2024 - added mtracr

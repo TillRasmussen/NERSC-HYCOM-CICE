@@ -28,7 +28,8 @@
 !
       logical, parameter :: lpipe_hybgen=.false.  !for debugging
 !
-      integer   i,j,k
+      integer   i,j,k,ktr
+      real      q
       character text*12
 !
  103  format (i9,2i5,a/(33x,i3,2f8.3,f8.3,f9.3,f9.2))
@@ -40,6 +41,51 @@
 !diag   p(itest,jtest,k+1)*qonem,k=1,kk)
 !diag endif
 !
+      ktr = itracr(801)
+      if     (ktr.ne.0) then
+! ---   tracer: change in layer thickness due to hybgen, m/day
+!$OMP   PARALLEL DO PRIVATE(j,i,k) &
+!$OMP            SCHEDULE(STATIC,jblk)
+        do j=1,jj
+          do k=1,kk
+            do i=1,ii
+              tracer(i,j,k,n,ktr)=dp(i,j,k,n)
+            enddo !i
+          enddo !k
+        enddo !j
+!$OMP   END PARALLEL DO
+      endif !itracr(801)
+!
+      ktr = itracr(802)
+      if     (ktr.ne.0) then
+! ---   tracer: change in layer temperature due to hybgen, degC/day
+!$OMP   PARALLEL DO PRIVATE(j,i,k) &
+!$OMP            SCHEDULE(STATIC,jblk)
+        do j=1,jj
+          do k=1,kk
+            do i=1,ii
+              tracer(i,j,k,n,ktr)=temp(i,j,k,n)
+            enddo !i
+          enddo !k
+        enddo !j
+!$OMP   END PARALLEL DO
+      endif !itracr(802)
+!
+      ktr = itracr(803)
+      if     (ktr.ne.0) then
+! ---   tracer: change in layer salinity due to hybgen, psu/day
+!$OMP   PARALLEL DO PRIVATE(j,i,k) &
+!$OMP            SCHEDULE(STATIC,jblk)
+        do j=1,jj
+          do k=1,kk
+            do i=1,ii
+              tracer(i,j,k,n,ktr)=saln(i,j,k,n)
+            enddo !i
+          enddo !k
+        enddo !j
+!$OMP   END PARALLEL DO
+      endif !itracr(803)
+!
 !$OMP PARALLEL DO PRIVATE(j) &
 !$OMP              SHARED(m,n) &
 !$OMP          SCHEDULE(STATIC,jblk)
@@ -47,6 +93,68 @@
         call hybgenaj(m,n, j)
       enddo
 !$OMP END PARALLEL DO
+!
+      ktr = itracr(801)
+      if     (ktr.ne.0) then
+! ---   tracer: change in layer thickness due to hybgen, m/day
+        q = qonem*86400.0/baclin
+!$OMP   PARALLEL DO PRIVATE(j,i,k) &
+!$OMP            SCHEDULE(STATIC,jblk)
+        do j=1,jj
+          do k=1,kk
+            do i=1,ii
+!diag              if (i.eq.itest .and. j.eq.jtest) then
+!diag                write (lp,'(a,i4,1x,3g12.4)') &
+!diag                'vrh =',k,dp(i,j,k,n)*qonem,tracer(i,j,k,n,ktr)*qonem, &
+!diag                       q*(dp(i,j,k,n)-      tracer(i,j,k,n,ktr))
+!diag              endif !debug
+              tracer(i,j,k,n,ktr) = q*(dp(i,j,k,n)-tracer(i,j,k,n,ktr))
+            enddo !i
+          enddo !k
+        enddo !j
+!$OMP   END PARALLEL DO
+      endif !itracr(801)
+!
+      if     (ktr.ne.0) then
+! ---   tracer: change in layer temperauture due to hybgen, degC/day
+        q = 86400.0/baclin
+!$OMP   PARALLEL DO PRIVATE(j,i,k) &
+!$OMP            SCHEDULE(STATIC,jblk)
+        do j=1,jj
+          do k=1,kk
+            do i=1,ii
+!diag              if (i.eq.itest .and. j.eq.jtest) then
+!diag                write (lp,'(a,i4,1x,3g12.4)') &
+!diag                'vrT =',k,temp(i,j,k,n),tracer(i,j,k,n,ktr)*qonem, &
+!diag                       q*(temp(i,j,k,n)-tracer(i,j,k,n,ktr))
+!diag              endif !debug
+              tracer(i,j,k,n,ktr) = q*(temp(i,j,k,n)-tracer(i,j,k,n,ktr))
+            enddo !i
+          enddo !k
+        enddo !j
+!$OMP   END PARALLEL DO
+      endif !itracr(802)
+!
+      ktr = itracr(803)
+      if     (ktr.ne.0) then
+! ---   tracer: change in layer salinity due to hybgen, psu/day
+        q = 86400.0/baclin
+!$OMP   PARALLEL DO PRIVATE(j,i,k) &
+!$OMP            SCHEDULE(STATIC,jblk)
+        do j=1,jj
+          do k=1,kk
+            do i=1,ii
+!diag              if (i.eq.itest .and. j.eq.jtest) then
+!diag                write (lp,'(a,i4,1x,3g12.4)') &
+!diag                'vrS =',k,saln(i,j,k,n),tracer(i,j,k,n,ktr), &
+!diag                       q*(saln(i,j,k,n)-tracer(i,j,k,n,ktr))
+!diag              endif !debug
+              tracer(i,j,k,n,ktr) = q*(saln(i,j,k,n)-tracer(i,j,k,n,ktr))
+            enddo !i
+          enddo !k
+        enddo !j
+!$OMP   END PARALLEL DO
+      endif !itracr(803)
 !
 ! --- vertical momentum flux across moving interfaces (the s-dot term in the
 ! --- momentum equation) - required to locally conserve momentum when hybgen
@@ -341,7 +449,7 @@
           endif
           qhrlx( k+1)=1.0/(1.0 + qts*(hybrlx-1.0))  !1 at  dp0k, qhybrlx at dp00i
           dp0ij( k)  =min( q, dp0k(k) )
-          dp0cum(k+1)=dp0cum(k)+dp0ij(k)
+          dp0cum(k+1)=dp0cum(k)+dp0k(k)
           p(i,j, k+1)=p(i,j,k)+dp(i,j,k,n)
 !diag         if (i.eq.itest .and. j.eq.jtest) then
 !diag           write (lp,'(i6,1x,6f9.3)') &
@@ -1190,6 +1298,20 @@
         endif !k.le.fixlay:else
 !
       enddo !k  vertical coordinate relocation
+
+      do k=1,kk-1
+        ! If layer is too thick, move interface up
+        if ((p(i,j,k+1)-p(i,j,k)) .gt. dx0k(k)) then
+          p(i,j,k+1)=p(i,j,k)+dx0k(k)
+!
+!diag     if (i.eq.itest .and. j.eq.jtest) then
+!diag       write(lp,'(a,i3.2,f8.2)') &
+!diag            'hybgen, max. thknss (k+):',k,p(i,j,k+1)*qonem
+!diag       call flush(lp)
+!diag     endif !debug
+        endif !dx0k
+      enddo !k  vertical coordinate relocation for maximum thickness
+
 !
 ! --- remap scalar field profiles from the 'old' vertical
 ! --- grid onto the 'new' vertical grid.
@@ -2843,3 +2965,8 @@
 !> Nov. 2019 - avoid overflow in calculation of qdep
 !> May  2021 - removed unneeded dpmixl halo update
 !> July 2022 - added hybthn (rthin)
+!> Feb. 2023 - bugfix to dp0cum
+!> Apr. 2023 - added dx0k
+!> July 2023 - added trcflg=801: change in layer thickness   due to hybgen
+!> July 2023 - added trcflg=802: change in layer temperature due to hybgen
+!> July 2023 - added trcflg=803: change in layer salinity    due to hybgen

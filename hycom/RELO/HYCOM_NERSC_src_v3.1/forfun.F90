@@ -955,7 +955,6 @@
           call preambl_print(preambl)
         endif !surtmp
 !
-!     CAGLAR: BEGIN (MAY2019)
 #ifdef _FABM_
 !     CAGLAR: BEGIN (MAY2019)
           call zaiopf(flnmfor(1:lgth)//'forcing.dewpt.a', 'old', 926)
@@ -965,8 +964,8 @@
           read (uoff+926,'(a79)') preambl
           endif !1st tile
           call preambl_print(preambl)
-#endif
 !     CAGLAR: END
+#endif
 
         if     (sstflg.eq.3) then
           call zaiopf(flnmfor(1:lgth)//'forcing.seatmp.a', 'old', 910)
@@ -2912,7 +2911,7 @@
 !
       integer i,j,k
       real    albw,degtorad
-      real*8  dtime(899:980)
+      real*8  dtime(895:910)
 !
       integer, save :: icall = -1
 !
@@ -2975,8 +2974,8 @@
 !CAGLAR
       dtime(917) = dtime(905)
       call rdpall1(dewpt,dtime(926),926,mod(icall,3).eq.2)
-#endif
 !     CAGLAR: END
+#endif
 
       call rdpall1(radflx,dtime(907),907,mod(icall,3).eq.2)
       call rdpall1( swflx,dtime(908),908,mod(icall,3).eq.2)

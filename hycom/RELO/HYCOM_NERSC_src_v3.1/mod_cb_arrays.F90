@@ -204,6 +204,7 @@
        uja,   ujb,     & ! velocities at lateral ..
        via,   vib,     & !       .. neighbor points
        pbot,           & ! bottom pressure at t=0
+       pbotmin,        & ! minimum bottom pressure, pbot*(oneta0-1)
        sgain,          & ! salin.changes from diapyc.mix.
        surtx,          & ! surface net x-stress on p-grid
        surty,          & ! surface net y-stress on p-grid
@@ -275,6 +276,7 @@
 #else
       real, save, dimension(kdm) ::  &
 #endif
+       dx0k,           & ! maximum layer thickness
        dp0k,           & ! minimum deep    z-layer separation
        ds0k              ! minimum shallow z-layer separation
 
@@ -391,7 +393,7 @@
        stoc_s,         & ! stochastic salinty     anomaly forcing
        stoc_u,         & ! stochastic u-velocity  anomaly forcing
        stoc_v            ! stochastic v-velocity  anomaly forcing
-#ifdef _FABM_ 
+#if defined(_FABM_) 
 !     !CAGLAR: BEGIN (MAY2019)
        dewpt,          ! dew point temperature, used for CO2 formulations
 !     !CAGLAR: END
@@ -479,7 +481,7 @@
 #endif
        rmu,            & ! weights for   s.w.b.c. relax
        rmunp,          & ! weights for p.n.w.b.c. relax
-#ifdef _FABM_ 
+#if defined(_FABM_)
        rmunp_trc,      & ! weights for FABM nesting variables
 #endif
        rmunv,          & ! weights for v.n.w.b.c. relax
@@ -722,6 +724,9 @@
 ! --- 'tmljmp' = equivalent temperature jump across the mixed layer (degC)
 ! --- 'prsbas' = msl pressure is input field + prsbas (Pa)
 ! --- 'salmin' = minimum salinity allowed in an isopycnic layer (psu)
+! --- 'dx00'   = maximum layer thickness minimum, optional (m)
+! --- 'dx00x'  = maximum layer thickness maximum, optional (m)
+! --- 'dx00f'  = maximum layer thickness stretching factor (1.0=const)
 ! --- 'dp00'   = deep    z-level spacing minimum thickness (m)
 ! --- 'dp00x'  = deep    z-level spacing maximum thickness (m)
 ! --- 'dp00f'  = deep    z-level spacing stretching factor (1.0=const.z)
@@ -744,8 +749,10 @@
 ! --- 'mixfrq' = KT: number of time steps between diapycnal mixing calcs
 ! --- 'icefrq' = relax to tfrz with e-folding time of icefrq time steps
 ! --- 'icpfrq' = number of time steps between sea-ice updates
-! --- 'ntracr' = number of tracers (<=mxtrcr)
+! --- 'ntracr' = number of            tracers (<=mxtrcr)
+! --- 'mtracr' = number of diagnostic tracers (<=mxtrcr-ntracr)
 ! --- 'trcflg' = tracer type flag (one per tracer)
+! --- 'itracr' = index to model diagnostic tracers (trcflg 801 to 899)
 ! --- 'clmflg' = climatology frequency flag (6=bimonthly,12=monthly)
 ! --- 'dypflg' = KT: diapycnal mixing flag (0=none,1=KPP,2=explicit)
 ! --- 'iniflg' = initial state flag (0=level,1=zonal,2=climatology)
@@ -795,6 +802,7 @@
                      sefold, &
                      thkmls,thkmlt,thkriv,thkmin,bldmin,bldmax,thkbot, &
                      thkcdw,thkfrz,tfrz_0,tfrz_s,ticegr,hicemn,hicemx, &
+                     dx00,dx00f,dx00x, &
                      dp00,dp00f,dp00x,ds00,ds00f,ds00x,dp00i,isotop, &
                      oneta0,sigjmp,tmljmp,prsbas,emptgt
 !
@@ -802,7 +810,7 @@
                      tsofrq,mixfrq,icefrq,icpfrq,nhybrd,nsigma, &
                      hybmap,hybflg,advflg,advtyp,momtyp,stfflg, &
                      kapref,kapnum, &
-                     ntracr,trcflg(mxtrcr), &
+                     ntracr,mtracr,trcflg(mxtrcr),itracr(801:899), &
                      clmflg,dypflg,iniflg,lbflag,mapflg,yrflag,sshflg, &
                      iversn,iexpt,jerlv0, &
                      iceflg,ishelf,icmflg,wndflg,amoflg,ustflg, &
@@ -986,11 +994,11 @@
                thstar = r_init
                 montg = r_init
 !
-      if     (ntracr.gt.0) then
-#if defined(RELO)
-        allocate( &
-              tracer(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,kdm,2,ntracr) )
-        call mem_stat_add( (idm+2*nbdy)*(jdm+2*nbdy)*kdm*2*ntracr )
+      if     (ntracr+mtracr.gt.0) then
+#if defined(RELO)    
+        allocate( &  
+              tracer(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy,kdm,2, ntracr+mtracr) )
+        call mem_stat_add( (idm+2*nbdy)*(jdm+2*nbdy)*kdm*2*(ntracr+mtracr) )
 #endif
               tracer = r_init
       endif
@@ -1301,6 +1309,7 @@
                  via(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy), &
                  vib(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy), &
                 pbot(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy), &
+             pbotmin(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy), &
                sgain(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy), &
                surtx(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy), &
                surty(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy), &
@@ -1339,6 +1348,7 @@
                  via = r_init
                  vib = r_init
                 pbot = r_init
+             pbotmin = r_init
                sgain = r_init
                surtx = r_init 
                surty = r_init
@@ -1364,7 +1374,7 @@
               wflfrz = 0.0     !diagnostic, icloan only
               sflice = r_init
                 si_c = 0.0 !r_init
-                si_h = r_init
+                si_h = 0.0 !r_init
                 si_t = r_init
                 si_u = r_init
                 si_v = r_init
@@ -1573,12 +1583,19 @@
       allocate( &
                 rmu(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy), &
               rmunp(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy), &
-#ifdef _FABM_ &
+#if defined(_FABM_)
               rmunp_trc(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy),
 #endif 
               rmunv(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy), &
-             rmutra(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy) )
-      call mem_stat_add( 5*(idm+2*nbdy)*(jdm+2*nbdy) )
+             rmunvu(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy), &
+             rmunvv(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy), &
+             rmutra(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy), &
+               rmus(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy) )
+#if defined(_FABM_)
+      call mem_stat_add( 8*(idm+2*nbdy)*(jdm+2*nbdy) )
+#else
+      call mem_stat_add( 7*(idm+2*nbdy)*(jdm+2*nbdy) )
+#endif
 #endif
                 rmu = r_init
               rmunp = r_init
@@ -1901,3 +1918,8 @@
 !> Oct. 2019 - added lbmont
 !> Oct. 2019 - added rmunvu and rmunvv, and layer 1 nested velocity ranges
 !> Nov. 2019 - added amoflg
+!> Sep. 2022 - added hybthn
+!> Apr. 2023 - added dx0k
+!> July 2023 - added mtracr and itracr
+!> Sep. 2023 - initialize si_h to zero
+!> Jan. 2024 - added pbotmin

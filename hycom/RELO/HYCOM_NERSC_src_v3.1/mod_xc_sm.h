@@ -708,7 +708,7 @@
 !
 !     single node version - do nothing.
 #if defined(TIMER)
-c
+!
       call xctmr1(10)
 #endif
       return
@@ -837,9 +837,9 @@ c
 !
       vland  = 0.0
       vland4 = 0.0
-c
-c     initialize timers.
-c
+!
+!     initialize timers.
+!
       call xctmri
 #if defined(TIMER)
       call xctmrn( 1,'xcaget')

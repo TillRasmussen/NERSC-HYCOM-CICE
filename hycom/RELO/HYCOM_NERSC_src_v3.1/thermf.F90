@@ -25,10 +25,17 @@
 ! --- ----------------------------------------------------------
 !
       logical, parameter ::  ldebug_empbal=.false.   !usually .false.
+      real,    parameter ::  emaxfr=0.125  ! max fraction of water evaporated
 !
-      integer i,j,k
-      real    emnp,dpemnp,dplay1,onetanew,onetaold, &
-              pbanew,pbaold,q,salt1n,salt1o
+#if defined (USE_NUOPC_CESMBETA)
+      logical, parameter ::  cesmbeta =.true.
+#else
+      logical, parameter ::  cesmbeta =.false.
+#endif
+!
+      integer i,j,k,k1
+      real    emnp,dpemnp,dpemnp1,dplay1,onetanew,onetaold, &
+              pbanew,pbaold,q
       real*8  d1,d2,d3,d4,ssum(2),s1(2)
 !
       if     (ishelf.ne.0) then  !sea ice and an ice shelf
@@ -38,7 +45,7 @@
             if (SEA_P) then
               if     (ishlf(i,j).eq.1) then  !standard ocean point
                 if ( cpl_swflx  .and. cpl_lwmdnflx .and. cpl_lwmupflx &
-                                .and. cpl_precip    ) then
+                                .and. cpl_precip   .and. cesmbeta ) then
 
                   sstflx(i,j) = (1.0-covice(i,j))*sstflx(i,j)   !relax over ocean
                   surflx(i,j) =     surflx(i,j) + flxice(i,j)   !ocn/ice frac. in coupler
@@ -74,7 +81,7 @@
 !$OMP END PARALLEL DO
       elseif (iceflg.ne.0) then
           if ( cpl_swflx  .and. cpl_lwmdnflx .and. cpl_lwmupflx &
-                          .and. cpl_precip    ) then
+                          .and. cpl_precip   .and. cesmbeta ) then
 ! ---     allow for sea ice
 !$OMP PARALLEL DO PRIVATE(j,i)
             do j=1,jj
@@ -92,7 +99,7 @@
                enddo !i
             enddo
 !$OMP END PARALLEL DO
-          else ! cpl_
+          else
 !$OMP PARALLEL DO PRIVATE(j,i)
             do j=1,jj
                do i=1,ii
@@ -313,10 +320,11 @@
 !!Alex New calculation of epmass, with E-P applied to the top layer
 !!AJW  Modified new epmass calculation to use actual dp rather than h
 !!AJW  updates pbavg, dp and S.1
+!!AJW  When E-P>0 and layer 1 is thin, some may get merged deeper
 !
       if     (epmass) then  !requires btrlfr=.true., see blkdat.F
-!$OMP   PARALLEL DO PRIVATE(j,i,k,emnp,dpemnp,dplay1,onetanew, &
-!$OMP                       onetaold,pbanew,pbaold,q)
+!$OMP   PARALLEL DO PRIVATE(j,i,k,k1,emnp,dpemnp,dpemnp1,dplay1, &
+!$OMP                       onetanew,onetaold,pbanew,pbaold,q)
         do j=1,jj
           do i=1,ii
             if (SEA_P) then
@@ -325,65 +333,95 @@
 ! ---         This only works if pbavg and dp have just been integrated from
 ! ---         the same time, hence btrlfr=false is not allowed
 !
-              emnp     = -wtrflx(i,j)*svref  !m/s
-              pbaold   = pbavg(i,j,n)
-              pbanew   = pbavg(i,j,n) - delt1*emnp*onem  !emnp mass = rho0*vol
-              pbanew   = max(pbanew, -pbot(i,j))
-              onetaold = max( oneta0, 1.0 + pbaold/pbot(i,j) )
-              onetanew = max( oneta0, 1.0 + pbanew/pbot(i,j) )
+              emnp   = -wtrflx(i,j)*svref  !m/s
+              pbaold = pbavg(i,j,n)
+              pbanew = pbaold - emnp*delt1*onem  !emnp mass = rho0*vol
+              if     (.false. .and. i.eq.itest.and.j.eq.jtest) then
+                q       = pbanew
+                dpemnp1 = emnp
+              endif
+              pbanew = max( pbanew, pbotmin(i,j), &
+                            pbaold - emaxfr*(pbot(i,j) + pbaold) )
+              onetaold = 1.0 + pbaold/pbot(i,j)
+              onetanew = 1.0 + pbanew/pbot(i,j)
+              !some evap may have been discarded
+              emnp        = (pbaold - pbanew)/(delt1*onem)
+              wtrflx(i,j) = -emnp/svref
+              if     (.false. .and. i.eq.itest.and.j.eq.jtest) then
+                write(lp,'(i9,a,1p5g12.4)') &
+                  nstep,' pba,emnp = ',pbanew*qonem, &
+                  (pbanew-pbaold)*qonem,(pbanew-q)*qonem, &
+                  emnp,emnp-dpemnp1
+                call flush(lp)
 !
-!             if     (i.eq.itest.and.j.eq.jtest) then
-!               s1(1) = dp(i,j,1,n)*onetaold*saln(i,j,1,n)
-!               ssum(1) = 0.0d0
-!               do k= 1,kk
-!                 ssum(1) = ssum(1) + dp(i,j,k,n)*onetaold*saln(i,j,k,n)
-!               enddo !k
-!             endif !test
+                  s1(1) = dp(i,j,1,n)*onetaold*saln(i,j,1,n)
+                ssum(1) = 0.0d0
+                do k= 1,kk
+                  ssum(1) = ssum(1) + dp(i,j,k,n)*onetaold*saln(i,j,k,n)
+                enddo !k
+              endif
 !
               pbavg(i,j,n) = pbanew
-              oneta(i,j,n) = max(oneta0, 1.0 + pbavg(i,j,n)/pbot(i,j))
+              oneta(i,j,n) = onetanew
               if     (delt1.ne.baclin) then
 ! ---           Robert-Asselin time filter correction
                 pbavg(i,j,m) = pbavg(i,j,m)+0.5*ra2fac*(pbanew-pbaold)
-                oneta(i,j,m) = max(oneta0,1.0 + pbavg(i,j,m)/pbot(i,j))
+                oneta(i,j,m) = 1.0 + pbavg(i,j,m)/pbot(i,j)
               endif
-! ---         treat E-P as a layer above layer 1, merged into layer 1
+! ---         treat E-P as a layer above layer 1, merged into layer 1(,2,...)
 ! ---         E-P salinity is 0 psu, E-P temperature is SST (T.1 is unchanged)
-                          q = onetaold/onetanew
-                     dplay1 = dp(i,j,1,n)*q
-                     dpemnp = (pbanew - pbaold)/onetanew
-                     salt1o = saln(i,j,1,n)*onetaold*dp(i,j,1,n)*qonem  !diagnostic
-              saln(i,j,1,n) = saln(i,j,1,n) + &
-                               (0.0-saln(i,j,1,n))* &
-                               dpemnp/(dplay1 + dpemnp)
-                dp(i,j,1,n) = dplay1 + dpemnp
-                 p(i,j,2  ) = dp(i,j,1,n)
-                     salt1n = saln(i,j,1,n)*onetanew*dp(i,j,1,n)*qonem  !diagnostic
-              do k= 2,kk
+              dpemnp = (pbanew - pbaold)/onetanew  !may be negative (evap)
+                   q = onetaold/onetanew
+              do k1= 1,kk
+                dplay1  = dp(i,j,k1,n)*q
+                dpemnp1 = max( -emaxfr*dplay1, dpemnp ) !evap at most emaxfr of the layer
+                  dp(i,j,k1,n) = dplay1 + dpemnp1
+                   p(i,j,k1+1) = dp(i,j,k1,n) + dp(i,j,k1,n)
+! ---           h.old = dplay1*onetanew, h.new = dp.new*onetanew
+! ---           S.new = S.old*h.old / h.new
+                saln(i,j,k1,n) = saln(i,j,k1,n) * max(epsil, dplay1) &
+                                                / max(epsil, dp(i,j,k1,n))
+                if     (.false. .and. i.eq.itest.and.j.eq.jtest) then
+                  write(lp,'(i9,i3,a,1p5g12.4)') &
+                    nstep,k1,' 1e,dp = ', &
+                    onetanew,dpemnp*qonem,dpemnp1*qonem, &
+                    dplay1*qonem,dp(i,j,k1,n)*qonem
+                  call flush(lp)
+                endif
+                if     (dpemnp1.eq.dpemnp) then
+                  exit  !E-P merged into column
+                elseif (k1.eq.kk) then
+                  exit  !only get here due to roundoff
+                else
+                  dpemnp = dpemnp - dpemnp1
+                endif
+              enddo !k1
+! ---         rest of thicknesses are unchanged, dp' updated
+              do k= k1+1,kk
                 dp(i,j,k,n) = dp(i,j,k,n)*q
                  p(i,j,k+1) = dp(i,j,k,n) + p(i,j,k)
               enddo !k
 !
-!             if     (i.eq.itest.and.j.eq.jtest) then
-!                 s1(2) = dp(i,j,1,n)*onetanew*saln(i,j,1,n)
-!               ssum(2) = 0.0d0
-!               do k= 1,kk
-!                 ssum(2) = ssum(2) + dp(i,j,k,n)*onetanew*saln(i,j,k,n)
-!               enddo !k
-! ---           normalize by onem, layer 1 is often 1 m thick
-!               s1(1) = s1(1)/onem
-!               s1(2) = s1(2)/onem
-!               write(lp,'(a,i9,1p3e16.8)')
-!    &            'epmass1:',nstep,s1(1),s1(2),s1(2)-s1(1)
-! ---           normalize by initial depth
-!               ssum(1) = ssum(1)/pbot(i,j)
-!               ssum(2) = ssum(2)/pbot(i,j)
-!               write(lp,'(a,i9,1p3e16.8)')
-!    &           'epmassd:',nstep,ssum(1),ssum(2),ssum(2)-ssum(1)
-!               write(lp,'(i9,a,3f12.6)')
-!    .            nstep,',oneta   =',onetaold,onetanew,onetaold/onetanew
-!               call flush(lp)
-!             endif !test
+              if     (.false. .and. i.eq.itest.and.j.eq.jtest) then
+                  s1(2) = dp(i,j,1,n)*onetanew*saln(i,j,1,n)
+                ssum(2) = 0.0d0
+                do k= 1,kk
+                  ssum(2) = ssum(2) + dp(i,j,k,n)*onetanew*saln(i,j,k,n)
+                enddo !k
+! ---           normalize by new thickness
+                s1(1) = s1(1)/max(dp(i,j,1,n)*onetanew,epsil)
+                s1(2) = s1(2)/max(dp(i,j,1,n)*onetanew,epsil)
+                write(lp,'(a,i9,1p3e16.7)') &
+                  'epmass1:',nstep,s1(1),s1(2),s1(2)-s1(1)
+! ---           normalize by new depth
+                ssum(1) = ssum(1)/(p(i,j,kk+1)*onetanew)
+                ssum(2) = ssum(2)/(p(i,j,kk+1)*onetanew)
+                write(lp,'(a,i9,1p3e16.7)') &
+                 'epmassd:',nstep,ssum(1),ssum(2),ssum(2)-ssum(1)
+                write(lp,'(i9,a,3f12.6)') &
+                  nstep,',oneta   =',onetaold,onetanew,onetaold/onetanew
+                call flush(lp)
+              endif !test
             endif !ip
           enddo !i
         enddo !j
@@ -397,15 +435,15 @@
       watcum=watcum+d1
       empcum=empcum+d2
 !
-!diag if     (itest.gt.0 .and. jtest.gt.0) then
-!diag   write(lp,'(i9,2i5,a/19x,4f10.4)') &
-!diag     nstep,i0+itest,j0+jtest, &
-!diag     '    sswflx    surflx    sstflx    wtrflx', &
-!diag     sswflx(itest,jtest), &
-!diag     surflx(itest,jtest), &
-!diag     sstflx(itest,jtest), &
-!diag     wtrflx(itest,jtest)
-!diag endif !test
+      if     (.false. .and. itest.gt.0 .and. jtest.gt.0) then
+        write(lp,'(i9,2i5,a/19x,4f10.4)') &
+          nstep,i0+itest,j0+jtest, &
+          '    sswflx    surflx    sstflx    wtrflx', &
+          sswflx(itest,jtest), &
+          surflx(itest,jtest), &
+          sstflx(itest,jtest), &
+          wtrflx(itest,jtest)
+      endif !test
       return
       end subroutine thermf_oi
 
@@ -426,6 +464,12 @@
 ! --- ---------------
 !
       logical, parameter ::  ldebug_sssbal=.false.   !usually .false.
+!
+#if defined (USE_NUOPC_CESMBETA)
+      logical, parameter ::  cesmbeta =.true.
+#else
+      logical, parameter ::  cesmbeta =.false.
+#endif
 !
       integer i,j,k,ktr,nm,l, iyear,iday,ihour
       real    day365,pwl,q,utotij,vtotij
@@ -588,10 +632,9 @@
               +swall(i,j,k,lc2)*wc2+swall(i,j,k,lc3)*wc3) )/ &
                         (1.0+delt1*rmu(i,j))
           if     (lwflag.eq.2 .or. sstflg.gt.2   .or. &
-!KAL &            icmflg.eq.2 .or. ticegr.eq.0.0     ) then
-                  icmflg.eq.2 .or. (ticegr.eq.0.0 .and. icegln)     ) then
+                  icmflg.eq.2 .or. ticegr.eq.0.0     ) then
 ! ---       use seatmp, since it is the best available SST
-            if(cpl_seatmp) then
+            if(cesmbeta .and. cpl_seatmp) then
                temp(i,j,k,n)=temp(i,j,k,n)+delt1*rmu(i,j)* &
                imp_seatmp(i,j,1)/(1.0+delt1*rmu(i,j))
             elseif (natm.eq.2) then
@@ -788,22 +831,22 @@
       enddo
 !$OMP END PARALLEL DO
 !
-!diag if     (itest.gt.0 .and. jtest.gt.0) then
-!diag   write(lp,'(i9,2i5,a/19x,4f10.4)') &
-!diag     nstep,i0+itest,j0+jtest, &
-!diag     '    sstflx     ustar    hekman    surflx', &
-!diag     sstflx(itest,jtest), &
-!diag     ustar( itest,jtest), &
-!diag     hekman(itest,jtest), &
-!diag     surflx(itest,jtest)
-!diag   write(lp,'(i9,2i5,a/19x,4f10.4)') &
-!diag     nstep,i0+itest,j0+jtest, &
-!diag     '    sswflx     wtrflx   rivflx    sssflx', &
-!diag     sswflx(itest,jtest), &
-!diag     wtrflx(itest,jtest), &
-!diag     rivflx(itest,jtest), &
-!diag     sssflx(itest,jtest)
-!diag endif !test
+      if     (.false. .and. itest.gt.0 .and. jtest.gt.0) then
+        write(lp,'(i9,2i5,a/19x,4f10.4)') &
+          nstep,i0+itest,j0+jtest, &
+          '    sstflx     ustar    hekman    surflx', &
+          sstflx(itest,jtest), &
+          ustar( itest,jtest), &
+          hekman(itest,jtest), &
+          surflx(itest,jtest)
+        write(lp,'(i9,2i5,a/19x,4f10.4)') &
+          nstep,i0+itest,j0+jtest, &
+          '    sswflx     wtrflx   rivflx    sssflx', &
+          sswflx(itest,jtest), &
+          wtrflx(itest,jtest), &
+          rivflx(itest,jtest), &
+          sssflx(itest,jtest)
+      endif !test
 !
 ! --- smooth surface fluxes?
 !
@@ -1020,6 +1063,12 @@
 !
 ! --- thermal forcing of ocean surface, for row j.
 !
+#if defined (USE_NUOPC_CESMBETA)
+      logical, parameter ::  cesmbeta =.true.
+#else
+      logical, parameter ::  cesmbeta =.false.
+#endif
+!
       integer i,ihr,it_a,ilat
       real    radfl,swfl,swflc,sstrlx,wind,airt,vpmx,prcp,xtau,ytau, &
               evap,evape,emnp,esst,sssf, &
@@ -1048,6 +1097,9 @@
                  csubp =1005.7, &
                  evaplh=2.47e6, &
                  csice =0.0006)
+!
+! --- parameter to disable sssrmx when much fresher than climatology
+      real, parameter :: frac_clim=0.5  !usually 0.5, can be 0.0
 !
 ! --- parameter for lwflag=-1
 ! --- 'sb_cst' = Stefan-Boltzman constant
@@ -1187,7 +1239,7 @@
 ! ---   wind = wind, or wind-ocean, speed (m/s)
         if     (flxflg.eq.6 .and. amoflg.ne.0) then
           wind=wndocn(i,j)  !magnitude of wind minus ocean current
-        elseif(cpl_wndspd) then
+        elseif(cesmbeta .and. cpl_wndspd) then
           wind=imp_wndspd(i,j,1)
         elseif (natm.eq.2) then
           wind=wndspd(i,j,l0)*w0+wndspd(i,j,l1)*w1
@@ -1198,10 +1250,7 @@
 ! ---   swfl = shortwave radiative thermal flux (W/m^2) +ve into ocean/ice
 ! ---          Qsw includes the atmos. model's surface albedo,
 ! ---          i.e. it already allows for sea-ice&snow where it is observed.
-#ifdef CPL_OASIS_HYCOM
-        swfl=cplts_recv(i,j,i2o_swra)
-#else
-        if(cpl_swflx) then
+        if(cesmbeta .and. cpl_swflx) then
           swfl=imp_swflx (i,j,1)
         elseif (natm.eq.2) then
           swfl=swflx (i,j,l0)*w0+swflx (i,j,l1)*w1
@@ -1209,7 +1258,6 @@
           swfl=swflx (i,j,l0)*w0+swflx (i,j,l1)*w1 &
               +swflx (i,j,l2)*w2+swflx (i,j,l3)*w3
         endif !natm
-#endif
         if     (dswflg.eq.1) then
 ! ---     daily to diurnal shortwave correction to swfl and radfl.
           dloc  = dtime + plon(i,j)/360.0
@@ -1227,29 +1275,30 @@
                   (1.0-xhr)*     xlat *diurnl(ihr,  ilat+1) + &
                        xhr *(1.0-xlat)*diurnl(ihr+1,ilat  ) + &
                        xhr *     xlat *diurnl(ihr+1,ilat+1)
-          if(cpl_swflx) then
+          if(cesmbeta .and. cpl_swflx) then
             swflc = (swscl-1.0)*imp_swflx (i,j,1)
             swfl  =  swscl     *imp_swflx (i,j,1)
           else
             swflc = (swscl-1.0)*swfl  !diurnal correction only
             swfl  =  swscl     *swfl
           endif
-!diag         if     (i.eq.itest.and.j.eq.jtest) then
-!diag           write(lp,'(i9,a,2i5,2f8.5)') &
-!diag             nstep,', hr,lat =',ihr,ilat,xhr,xlat
-!diag           write(lp,'(i9,a,5f8.5)') &
-!diag             nstep,', swscl  =',swscl,diurnl(ihr,  ilat  ), &
-!diag                                      diurnl(ihr,  ilat+1), &
-!diag                                      diurnl(ihr+1,ilat  ), &
-!diag                                      diurnl(ihr+1,ilat+1)
-!diag           call flush(lp)
-!diag         endif !test
+              if     (.false. .and. i.eq.itest.and.j.eq.jtest) then
+                write(lp,'(i9,a,2i5,2f8.5)') &
+                  nstep,', hr,lat =',ihr,ilat,xhr,xlat
+                write(lp,'(i9,a,5f8.5)') &
+                  nstep,', swscl  =',swscl,diurnl(ihr,  ilat  ), &
+                                           diurnl(ihr,  ilat+1), &
+                                           diurnl(ihr+1,ilat  ), &
+                                           diurnl(ihr+1,ilat+1)
+                call flush(lp)
+              endif !test
         else
           swflc = 0.0 !no diurnal correction
         endif !dswflg
 ! ---   radfl= net       radiative thermal flux (W/m^2) +ve into ocean/ice
 ! ---        = Qsw+Qlw across the atmosphere to ocean or sea-ice interface
-        if(cpl_swflx .and. cpl_lwmdnflx .and. cpl_lwmupflx) then
+        if(cesmbeta .and. &
+           cpl_swflx .and. cpl_lwmdnflx .and. cpl_lwmupflx) then
            radfl= imp_swflx (i,j,1) &
                  +imp_lwdflx(i,j,1) &
                  +imp_lwuflx(i,j,1)
@@ -1262,7 +1311,8 @@
         endif !natm
         if     (lwflag.eq.-1) then
 ! ---     input radflx is Qlwdn, convert to Qlw + Qsw
-          if(cpl_swflx .and. cpl_lwmdnflx .and. cpl_lwmupflx ) then
+          if(cesmbeta .and. &
+             cpl_swflx .and. cpl_lwmdnflx .and. cpl_lwmupflx ) then
              radfl= imp_swflx (i,j,1) &
                    +imp_lwdflx(i,j,1) &
 !                   - sb_cst*(temp(i,j,1,n)+tzero)**4
@@ -1280,7 +1330,7 @@
                    ( twall(i,j,1,lc0)*wc0+twall(i,j,1,lc1)*wc1 &
                     +twall(i,j,1,lc2)*wc2+twall(i,j,1,lc3)*wc3)
           else !w.r.t. atmospheric model's sst
-            if(cpl_surtmp) then
+            if(cesmbeta .and. cpl_surtmp) then
                   tdif = tsur - imp_surtmp(i,j,1)
             elseif (natm.eq.2) then
               tdif = tsur - &
@@ -1302,15 +1352,15 @@
           !allow for any diurnal correction
           radfl = radfl + swflc
         endif
-!diag         if     (i.eq.itest.and.j.eq.jtest) then
-!diag           write(lp,'(i9,a,4f8.2)') &
-!diag             nstep,', radfl  =',radfl,swflc,swfl,swfl-swflc
-!diag           call flush(lp)
-!diag         endif !test
+              if     (.false. .and. i.eq.itest.and.j.eq.jtest) then
+                write(lp,'(i9,a,4f8.2)') &
+                  nstep,', radfl  =',radfl,swflc,swfl,swfl-swflc
+                call flush(lp)
+              endif !test
         if     (pcipf) then
 ! ---     prcp = precipitation (m/sec; positive into ocean)
 ! ---     note that if empflg==3, this is actually P-E
-          if(cpl_precip) then
+          if(cesmbeta .and. cpl_precip) then
             prcp=imp_precip(i,j,1)
           elseif (natm.eq.2) then
             prcp=precip(i,j,l0)*w0+precip(i,j,l1)*w1
@@ -1320,7 +1370,7 @@
           endif !natm
         endif
         if     (empflg.lt.0) then  !observed (or NWP) SST
-          if (cpl_seatmp) then
+          if (cesmbeta .and. cpl_seatmp) then
             esst = imp_seatmp(i,j,1)
           elseif (natm.eq.2) then
             esst = seatmp(i,j,l0)*w0+seatmp(i,j,l1)*w1
@@ -1330,7 +1380,7 @@
           endif !natm
         endif
         if     (flxflg.ne.3) then
-          if(cpl_airtmp .and. cpl_vapmix) then
+          if(cesmbeta .and. cpl_airtmp .and. cpl_vapmix) then
              airt=imp_airtmp(i,j,1)
              vpmx=imp_vapmix(i,j,1)
           elseif (natm.eq.2) then
@@ -1361,7 +1411,7 @@
         endif
 ! ---   ustar = U* (sqrt(N.m/kg))                 
         if     (ustflg.eq.3) then !ustar from input
-          if(cpl_ustara) then
+          if(cesmbeta .and. cpl_ustara) then
             ustar(i,j)=imp_ustara(i,j,1)
           elseif (natm.eq.2) then
             ustar(i,j)=ustara(i,j,l0)*w0+ustara(i,j,l1)*w1
@@ -1411,14 +1461,14 @@
                   max(0.,0.97*qsatur(esst)-vpmx)
         endif
 ! ---   Latent Heat flux (W/m2)
-        if(cpl_latflx) then
+        if(cesmbeta .and. cpl_latflx) then
             evap=imp_latflx(i,j,1)
         else
             evap=ctl*airdns*evaplh*wind* &
                  max(0.,0.97*qsatur(temp(i,j,1,n))-vpmx)
         endif
 ! ---   Sensible Heat flux (W/m2)
-        if(cpl_sensflx) then
+        if(cesmbeta .and. cpl_sensflx) then
             snsibl=imp_sensflx(i,j,1)
         else
             snsibl=csh*airdns*csubp*wind*(temp(i,j,1,n)-airt)
@@ -1452,26 +1502,26 @@
         endif
 
 ! ---   Latent Heat flux (W/m2)
-        if(cpl_latflx) then
+        if(cesmbeta .and. cpl_latflx) then
            evap=imp_latflx(i,j,1)
         else
            evap   = slat*clh*wind*(0.97*qsatur(temp(i,j,1,n))-vpmx)
         endif
 ! ---   Sensible Heat flux (W/m2)
-        if(cpl_sensflx) then
+        if(cesmbeta .and. cpl_sensflx) then
            snsibl=imp_sensflx(i,j,1)
         else
            snsibl = ssen*csh*wind* tdif
         endif
         surflx(i,j) = radfl - snsibl - evap
 !
-!diag   if     (i.eq.itest.and.j.eq.jtest) then
-!diag     write(lp,'(i9,2i5,a,4f8.5)') &
-!diag     nstep,i0+i,j0+j,' cl0,cl,cs,cd    = ',cl0,clh,csh,cd0
-!diag     write(lp,'(i9,2i5,a,2f8.2,f8.5)') &
-!diag     nstep,i0+i,j0+j,' wsph,tdif,ustar = ',wsph,tdif,ustar(i,j)
-!diag     call flush(lp)
-!diag   endif
+        if     (.false. .and. i.eq.itest.and.j.eq.jtest) then
+          write(lp,'(i9,2i5,a,4f8.5)') &
+          nstep,i0+i,j0+j,' cl0,cl,cs,cd    = ',cl0,clh,csh,cd0
+          write(lp,'(i9,2i5,a,2f8.2,f8.5)') &
+          nstep,i0+i,j0+j,' wsph,tdif,ustar = ',wsph,tdif,ustar(i,j)
+          call flush(lp)
+        endif
       elseif (flxflg.eq.4) then
 !
 ! ---   Similar to flxflg.eq.2, but with Cl based on an approximation
@@ -1554,26 +1604,26 @@
           evape = slat*clh*wind*(0.97*qsatur(esst)-vpmx)
         endif
 ! ---   Latent Heat flux (W/m2)
-        if(cpl_latflx) then
+        if(cesmbeta .and. cpl_latflx) then
            evap=imp_latflx(i,j,1)
         else
            evap   = slat*clh*wind*(0.97*qsatur(temp(i,j,1,n))-vpmx)
         endif
 ! ---   Sensible Heat flux (W/m2)
-        if(cpl_sensflx) then
+        if(cesmbeta .and. cpl_sensflx) then
            snsibl=imp_sensflx(i,j,1)
         else
            snsibl = ssen*csh*wind* tdif
         endif
         surflx(i,j) = radfl - snsibl - evap
 !
-!diag   if     (i.eq.itest.and.j.eq.jtest) then
-!diag     write(lp,'(i9,2i5,a,3f8.5)') &
-!diag     nstep,i0+i,j0+j,' cl,cs,cd    = ',clh,csh,cd0
-!diag     write(lp,'(i9,2i5,a,2f8.2,f8.5)') &
-!diag     nstep,i0+i,j0+j,' va,tamst,ustar = ',va,tamts,ustar(i,j)
-!diag     call flush(lp)
-!diag   endif
+        if     (.false. .and. i.eq.itest.and.j.eq.jtest) then
+          write(lp,'(i9,2i5,a,3f8.5)') &
+          nstep,i0+i,j0+j,' cl,cs,cd    = ',clh,csh,cd0
+          write(lp,'(i9,2i5,a,2f8.2,f8.5)') &
+          nstep,i0+i,j0+j,' va,tamst,ustar = ',va,tamts,ustar(i,j)
+          call flush(lp)
+        endif
       elseif (flxflg.eq.6) then
 !
 ! ---   Similar to flxflg.eq.4, but with more pressure dependance,
@@ -1660,13 +1710,13 @@
           evape = slat*clh*wind*(qsatur6(esst,pair,sssf)-vpmx)
         endif
 ! ---   Latent Heat flux (W/m2)
-        if(cpl_latflx) then
+        if(cesmbeta .and. cpl_latflx) then
            evap=imp_latflx(i,j,1)
         else
            evap=slat*clh*wind*(qsatur6(temp(i,j,1,n),pair,sssf)-vpmx)
         endif
 ! ---   snsibl = sensible heat flux  (W/m^2) into atmos from ocean.
-        if(cpl_sensflx) then
+        if(cesmbeta .and. cpl_sensflx) then
            snsibl=imp_sensflx(i,j,1)
         else
            snsibl = ssen*csh*wind* tdif
@@ -1674,13 +1724,13 @@
 ! ---   surflx = thermal energy flux (W/m^2) into ocean
         surflx(i,j) = radfl - snsibl - evap
 !
-!diag   if     (i.eq.itest.and.j.eq.jtest) then
-!diag     write(lp,'(i9,2i5,a,3f8.5)') &
-!diag     nstep,i0+i,j0+j,' cl,cs,cd    = ',clh,csh,cd0
-!diag     write(lp,'(i9,2i5,a,2f8.2,f8.5)') &
-!diag     nstep,i0+i,j0+j,' va,tamst,ustar = ',va,tamts,ustar(i,j)
-!diag     call flush(lp)
-!diag   endif
+        if     (.false. .and. i.eq.itest.and.j.eq.jtest) then
+          write(lp,'(i9,2i5,a,3f8.5)') &
+          nstep,i0+i,j0+j,' cl,cs,cd    = ',clh,csh,cd0
+          write(lp,'(i9,2i5,a,2f8.2,f8.5)') &
+          nstep,i0+i,j0+j,' va,tamst,ustar = ',va,tamts,ustar(i,j)
+          call flush(lp)
+        endif
       elseif (flxflg.eq.5) THEN
 ! ---   CORE v2 Large and Yeager 2009 CLym. Dyn.: The global climatology 
 ! ---    of an interannually varying air-sea flux dataset.
@@ -1762,7 +1812,7 @@
         if     (empflg.lt.0) then
           evape = slat*ce10*wind*(qsatur5(esst,qrair)-vpmx)
         endif
-        if(cpl_latflx) then
+        if(cesmbeta .and. cpl_latflx) then
           evap=imp_latflx(i,j,1)
         else
           evap = slat*ce10*wind*(qsatur5(temp(i,j,1,n),qrair)-vpmx)
@@ -1770,7 +1820,7 @@
 
 ! --- Sensible Heat flux
         ssen   = cpcore*rair
-        if(cpl_sensflx) then
+        if(cesmbeta .and. cpl_sensflx) then
           snsibl=imp_sensflx(i,j,1)
         else
           snsibl = ssen*ch10*wind*(temp(i,j,1,n)-airt)
@@ -1811,7 +1861,7 @@
                     +twall(i,j,1,lc2)*wc2+twall(i,j,1,lc3)*wc3) - &
                    temp(i,j,1,n)
         else  !synoptic sst
-          if(cpl_seatmp) then
+          if(cesmbeta .and. cpl_seatmp) then
             sstdif = imp_seatmp(i,j,1) - temp(i,j,1,n)
           elseif (natm.eq.2) then
             sstdif = ( seatmp(i,j,l0)*w0+seatmp(i,j,l1)*w1) - &
@@ -1847,7 +1897,7 @@
       wtrflx(i,j)=-emnp*rhoref
 ! --- allow for rivers as a precipitation bogas (m/s kg/m**3)
       if     (priver) then
-        if(cpl_orivers.and.cpl_irivers) then
+        if(cesmbeta .and. cpl_orivers.and.cpl_irivers) then
             rivflx(i,j) = (imp_orivers(i,j,1)+imp_irivers(i,j,1)) &
                         * rhoref
         else
@@ -1870,7 +1920,7 @@
 ! ---          set negative to stop relaxing entirely at -sssrlx
 ! ---          the default (sssflg=1) is 99.9, i.e. no limit
 ! ---          always fully relax when ice covered or when
-! ---          fresher than half climatological sss.
+! ---          fresher than "frac_clim" of climatological sss.
 !
         sssc   =  swall(i,j,1,lc0)*wc0+swall(i,j,1,lc1)*wc1 &
                  +swall(i,j,1,lc2)*wc2+swall(i,j,1,lc3)*wc3
@@ -1890,28 +1940,28 @@
            endif
         endif
 #else
-        if     (saln(i,j,1,n).gt.0.5*sssc .and.
-     &          abs(sssdif).gt.abs(sssrmx(i,j))) then  !large sss anomaly
+        if     (saln(i,j,1,n).gt.frac_clim*sssc .and.   &
+                abs(sssdif).gt.abs(sssrmx(i,j))) then  !large sss anomaly
           if     (sssrmx(i,j).lt.0.0) then
             sssdif = covice(i,j)*sssdif !turn off relaxation except under ice
           elseif (sssdif.lt.0.0) then !sssdif < -sssrmx < 0
-            sssdif =      covice(i,j)*   sssdif +
-     &               (1.0-covice(i,j))*(-sssrmx(i,j))  !limit relaxation
+            sssdif =      covice(i,j)*   sssdif + &
+                     (1.0-covice(i,j))*(-sssrmx(i,j))  !limit relaxation
           else !sssdif > sssrmx > 0
-            sssdif =      covice(i,j)*    sssdif +
-     &               (1.0-covice(i,j))*   sssrmx(i,j)  !limit relaxation
+            sssdif =      covice(i,j)*    sssdif + &
+                     (1.0-covice(i,j))*   sssrmx(i,j)  !limit relaxation
           endif
         endif
 #endif
         sssflx(i,j)=(rmus(i,j)*min(p(i,j,kk+1),thkmls*onem)/g)* &
                     sssdif
-        util2(i,j)=sssflx(i,j)*scp2(i,j)
-        util1(i,j)=max(util2(i,j),0.0)
+         util2(i,j)=sssflx(i,j)*scp2(i,j)
+         util1(i,j)=max(util2(i,j),0.0)
 !       salflx(i,j)=salflx(i,j)+sssflx(i,j) !update salflx in thermf_oi
       else
         sssflx(i,j)=0.0
-        util2(i,j)=0.0
-        util1(i,j)=0.0
+         util2(i,j)=0.0
+         util1(i,j)=0.0
       endif !srelax
       endif !ip
       enddo !i
@@ -2309,3 +2359,7 @@
 !> Oct. 2019 - rmunv replaced with rmunvu and rmunvv
 !> Nov. 2019 - added amoflg
 !> May  2021 - bug fix: removed natm from sstflg=1
+!> July 2023 - add parameter frac_clim, usualy 0.5 for original behaviour
+!> Dec. 2023 - add cesmbeta as a master switch to cpl_
+!> Jan. 2024 - evap with epmass==1 can extend below a thin enough layer 1
+!> Jan. 2024 - evap with epmass==1 may be clipped for small oneta

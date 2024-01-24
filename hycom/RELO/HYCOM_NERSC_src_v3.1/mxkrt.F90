@@ -24,8 +24,8 @@
 #if defined(RELO)
       real, save, allocatable, dimension(:,:) :: &
 #else
-      real, save, dimension(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy) ::
-#endif &
+      real, save, dimension(1-nbdy:idm+nbdy,1-nbdy:jdm+nbdy) :: &
+#endif
        depnew
 !
       integer i,j
