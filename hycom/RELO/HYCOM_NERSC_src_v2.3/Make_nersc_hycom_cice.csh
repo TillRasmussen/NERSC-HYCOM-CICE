@@ -72,22 +72,21 @@ endif
 # --- KAL. Touch this file to make sure it exists. It may be empty, but the makefile will look for it
 touch ./hycom_feature_flags
 # setup cpp flags
-setenv NERSC_FLAG "-DNERSC_HYCOM_CICE -DNERSC_USE_ESMF -DNERSC_ATM_CPL -DNERSC_saltflux -DNERSC_T2F"
+#setenv NERSC_FLAG "-DNERSC_HYCOM_CICE -DNERSC_USE_ESMF -DNERSC_ATM_CPL -DNERSC_saltflux -DNERSC_T2F"
 #
 # --- make HYCOM component, and update hycom_cice
 #
 # --- force a relink, because CICE is not in the dependencies
 touch hycom_cice
-touch hycom_cice_nersc
 /bin/rm hycom_cice
-/bin/rm hycom_cice_nersc
 if ($CICE_FLAG == 0) then
 	echo "only hycom"
       	make ARCH=$ARCH TYPE=$TYPE CICE_FLAG=$CICE_FLAG hycom
       	echo "Replacing HYCOM with HYCOM_CICE ..."
       	mv hycom hycom_cice
 else
-	make ARCH=$ARCH TYPE=$TYPE CICE_DIR=../CICE/ hycom_cice_nersc
+	make ARCH=$ARCH TYPE=$TYPE CICE_DIR=../CICE hycom_cice_nersc
+      	mv hycom_cice_nersc hycom_cice
 endif
 # --- some machines require gmake
 #gmake ARCH=$ARCH TYPE=$TYPE hycom_cice

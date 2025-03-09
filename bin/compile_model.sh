@@ -18,8 +18,7 @@ source ./EXPT.src || { echo "Could not source ./EXPT.src" ; exit 1 ; }
 echo ${V}
 if [ "${V}" == "2.2.98" ]; then
 	sourcedir=$NHCROOT/hycom/RELO/src_${V}ZA-07Tsig0-i-sm-sse_relo_mpi/
-elif [ "${V}" == "2.2.98.01" ]; then
-        sourcedir=$NHCROOT/hycom/RELO/src_${V}ZA-07Tsig0-i-sm-sse_relo_mpi/
+        sourcedir_cice=$NHCROOT/cice/Release-5.1/
 elif [ "${V}" == "2.3" ]; then
         sourcedir=$NHCROOT/hycom/RELO/HYCOM_NERSC_src_v${V}/
         sourcedir_cice=$NHCROOT/cice/Release-5.1/
@@ -53,7 +52,6 @@ usage="
    optional arguments :
       -u              : update code in build dir from $sourcedir
       -m mpi_library  : on some machines you need to specify what mpi library to use
-      -d              : NOT IMPLEMENTED Run with debug version of ESMF, CICE and HYCOM. Available on Betzy. Maybe not on other machines
 
 
    Examples:
@@ -120,14 +118,11 @@ echo "$(basename $0) : ARCH=$ARCH"
 # SITE deduced from hostname. 
 unames=$(uname -s)
 unamen=$(uname -n)
+hostnamed=$(hostname -d)
 
 echo $unamen
 # Hardcoded cases - hexagon
-if [ "${unamen:0:7}" == "hexagon" ] ; then
-   SITE="hexagon"
-   MACROID=$ARCH.$SITE.$compiler
-
-elif [ "${unamen:5:5}" == "bullx" ] ; then
+if [ "${unamen:5:5}" == "bullx" ] ; then
    SITE="surfsara"
    MACROID=$ARCH.$SITE.$compiler
 
@@ -138,10 +133,10 @@ elif [ "${unamen:0:5}" == "alvin" ] ; then
 elif [ "${unamen:0:5}" == "elvis" ] ; then
    SITE="elvis"
    MACROID=$ARCH.$SITE.$compiler
-elif [ "${unamen:8:5}" == "betzy" ] ; then
+elif [ "${hostnamed:0:5}" == "betzy" ] ; then
    SITE="betzy"
    MACROID=$ARCH.$SITE.$compiler
-elif [ "${unamen:0:5}" == "login" ] ; then # fram
+elif [ "${hostnamed:0:4}" == "fram" ] ; then # fram
    SITE="fram"
    MACROID=$ARCH.$SITE.$compiler
 # Generic case. SITE is empty
@@ -165,21 +160,6 @@ fi
 echo "$(basename $0) : SITE=$SITE"
 echo $MACROID
 
-###module rm ESMF
-if [[ "${debug}" == "debug" ]] ; then
-###   module load ESMF/8.3.0-intel-2022a-debug
-      exit
-else
-#module load ESMF/8.3.0-intel-2022a
-     module list
-     ml purge
-     module load Python/3.8.2-GCCcore-9.3.0
-     module load intel/2021a
-     module load ESMF/8.0.1-intel-2020a
-     module load FFTW/3.3.8-intel-2020a
-     module load UDUNITS/2.2.26-GCCcore-9.3.0
-     module load CMake/3.16.4-GCCcore-9.3.0
-fi
 # Deduce ESMF dir from SITE and possibly ARCH
 if [[ -n "${ESMF_DIR}" ]] &&  [[ -n "${ESMF_MOD_DIR}" ]] && [[ -n "${ESMF_LIB_DIR}" ]] ; then
    echo "Using preset ESMF_DIR    =$ESMF_DIR"
@@ -188,11 +168,10 @@ if [[ -n "${ESMF_DIR}" ]] &&  [[ -n "${ESMF_MOD_DIR}" ]] && [[ -n "${ESMF_LIB_DI
 
 # If site is given, use hardcoded settings for this machine
 elif [ "$SITE" == "alvin" ] || [ "$SITE" == "elvis" ] ; then
-    echo "hardcoded settings for $SITE"
-    if [[ -z "${ESMF_DIR}" ]] ; then
-       export ESMF_DIR=/home/sm_grasu/local
-    fi
-
+   echo "hardcoded settings for $SITE"
+   if [[ -z "${ESMF_DIR}" ]] ; then
+     export ESMF_DIR=/home/sm_grasu/local
+   fi
    export ESMF_MOD_DIR=${ESMF_DIR}/mod/modO/Linux.$compiler.64.mpi.default/
    export ESMF_LIB_DIR=${ESMF_DIR}/lib/libO/Linux.$compiler.64.mpi.default/
 
@@ -202,14 +181,7 @@ elif [ "$SITE" == "fram" ] ; then
    export ESMF_LIB_DIR=${ESMF_DIR}lib/
 
 elif [ "$SITE" == "betzy" ] ; then
-   ##export ESMF_DIR=/cluster/software/ESMF/8.0.1-intel-2020a/
    export ESMF_DIR=${EBROOTESMF}/
-   export ESMF_MOD_DIR=${ESMF_DIR}mod/
-   export ESMF_LIB_DIR=${ESMF_DIR}lib/
-   
-elif [ "$SITE" == "surfsara" ] ; then 
-   echo "hardcoded settings for $SITE"
-   export ESMF_DIR=/sw/arch/RedHatEnterpriseServer7/EB_production/2019/software/ESMF/7.1.0r-intel-2018b/
    export ESMF_MOD_DIR=${ESMF_DIR}mod/
    export ESMF_LIB_DIR=${ESMF_DIR}lib/
    
@@ -234,6 +206,7 @@ fi
 echo "$(basename $0) : ESMF_DIR=$ESMF_DIR"
 echo "$(basename $0) : ESMF_MOD_DIR=$ESMF_MOD_DIR"
 echo "$(basename $0) : ESMF_LIB_DIR=$ESMF_LIB_DIR"
+
 # Get some useful info from blkdat.input
 THFLAG=$(blkdat_get blkdat.input thflag)
 IDM=$(blkdat_get blkdat.input idm)
@@ -330,37 +303,55 @@ else
 fi
 
 
-# Copy hycom feature flag in expt dir if present
 [ -f $EDIR/hycom_feature_flags  ] && cp $EDIR/hycom_feature_flags $targetdir
 
+echo "Now compiling cice in $targetdir. $ICEFLG" 
 # Set up correct eq of state for hycom
-#stmt=stmt_fns_SIGMA${MYTHFLAG}_${TERMS}term.h
-#cd $targetdir
-#echo "Now setting up stmt_fns.h in $targetdir"
-#rm stmt_fns.h
-#ln -s ALT_CODE/$stmt stmt_fns.h
-echo "Now compiling cice in $targetcicedir. $ICEFLG" 
+if [ "${V}" == "2.2.98" ]; then
+   stmt=stmt_fns_SIGMA${MYTHFLAG}_${TERMS}term.h
+   cd $targetdir
+   echo "Now setting up stmt_fns.h in $targetdir"
+   rm stmt_fns.h
+   ln -s ALT_CODE/$stmt stmt_fns.h
+fi
+cd ${targetconfdir}
+if [ "${V}" == "2.3" ]; then
+   if [ -s ${MACROID}_cice.V23 ]; then
+      [ -s ${MACROID}_cice ] && rm ${MACROID}_cice
+      ln -sf ${MACROID}_cice.V23 ${MACROID}_cice
+   fi
+else 
+   if [ -s ${MACROID}_cice.V22 ]; then
+      [ -s ${MACROID}_cice ] && rm ${MACROID}_cice
+      ln -sf ${MACROID}_cice.V22 ${MACROID}_cice
+   fi
+fi
 if [ ${ICEFLG} -eq 2 ] ; then
-	echo $MACROID
-	# 1) Compile CICE. Environment variables need to be passe to script
-	cd $targetcicedir
-       env RES=gx3 GRID=${IDM}x${JDM} debug=${debug} SITE=$SITE MACROID=$MACROID ./comp_ice.esmf
-	res=$?
-	if [ $res -ne 0 ] ; then 
-   		echo
-   		echo "Error when compiling CICE, see above "
-  		 exit $res
-	fi
-# renove cice.o as this contains main and it is not needed for coupled runs
-rm $targetcicedir/rundir/compile/CICE.o
+   echo $MACROID
+   # 1) Compile CICE. Environment variables need to be passe to script
+   cd $targetcicedir
+   env RES=gx3 GRID=${IDM}x${JDM} SITE=$SITE MACROID=$MACROID ./comp_ice.esmf
+   res=$?
+   if [ $res -ne 0 ] ; then 
+      echo
+      echo "Error when compiling CICE, see above "
+      exit $res
+   fi
+   # renove cice.o as this contains main and it is not needed for coupled runs
+   if [ "${V}" == "2.3" ]; then
+      rm $targetcicedir/rundir/compile/CICE.o
+   fi
 fi
 # Create hycom objects and final hycom_cice executable. 
 cd $targetdir
 if [ $ICEFLG -ne 0 ] ; then
-    echo "Now compiling hycom_cice in $targetdir."
+    echo "Now compiling hycom_cice in $targetdir : ${V}"
     #env ARCH=$MACROID csh Make_cice.csh
-    env csh Make_nersc_hycom_cice.csh ${MACROID} ${ICEFLG}
-    env csh Make_nersc_hycom_cice.csh ${MACROID} ${ICEFLG} ${debug}
+    if [ "${V}" == "2.2.98" ]; then
+       env csh Make_cice.csh ${MACROID} ${ICEFLG}
+    elif [ "${V}" == "2.3" ]; then
+       env csh Make_nersc_hycom_cice.csh ${MACROID} ${ICEFLG} ""
+    fi
     res=$?
     if [ $res -ne 0 ] ; then
         echo
@@ -372,6 +363,7 @@ else
     export ICEFLG=${ICEFLG}
     export ARCH=${MACROID}
     echo $ARCH
+ 
     csh Make_hycom.csh ${MACROID} ${ICEFLG}
     res=$?
     if [ $res -ne 0 ] ; then

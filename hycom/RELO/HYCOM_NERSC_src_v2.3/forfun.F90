@@ -325,7 +325,7 @@
           enddo !j
         endif !stroff:else
 !
-      endif				!  windf = .true.
+      endif     !  windf = .true.
 !
       if (thermo) then
 !
@@ -1941,7 +1941,8 @@
         if     (mnproc.eq.1) then
         write (lp,*) 'No sss relaxation limiter.'
         endif !1st tile
-        sssrmx(:,:) = 99.9  !needed for thermf, set to no limit
+        !sssrmx(:,:) = 99.9  !needed for thermf, set to no limit
+        sssrmx(:,:) = 1.0  !set one psu limit
       endif
 !
       if     (relax) then  ! boundary thermal relaxation

@@ -66,7 +66,7 @@ hycom_cice:	$(MODS) $(OBJS) mod_OICPL.o hycom_cice.o
 	$(LD)  $(LDFLAGS) -o hycom_cice \
                              hycom_cice.o mod_OICPL.o \
                              $(MODS) $(OBJS) \
-                             ${CICE_DIR}/esmf/compile/*.o \
+                             ${CICE_DIR}/rundir/compile/*.o \
                              $(EXTRALIBS)
 hycom_cice_nersc:     $(MODS) $(OBJS) mod_OICPL.o hycom_cice_nersc.o
 	$(LD)  $(LDFLAGS) -o hycom_cice_nersc \
